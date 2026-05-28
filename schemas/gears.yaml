@@ -1,0 +1,20 @@
+domain: "Verzahnungen"
+description: "Metadatenschema für Verzahnungs-Wissensbasis"
+
+fields:
+  - name: verzahnungstyp
+    type: string
+    enum: ["Stirnrad", "Schrägverzahnung", "Kegelrad", "Schneckenrad", "Innenverzahnung", "unspecified"]
+    filter_type: exact
+    description: "Art der Verzahnung. 'unspecified' für allgemeine Inhalte."
+
+  - name: modul
+    type: number
+    filter_type: range
+    range_fields: [modul_min, modul_max]
+    description: "Modul der Verzahnung in mm. Bei Bereichsangaben min und max füllen."
+
+extraction_prompt_hint: |
+  Du analysierst einen Textabschnitt aus einem Dokument zu Verzahnungen.
+  Extrahiere die Metadaten möglichst konservativ - lieber null/unspecified
+  angeben als raten. Modul-Bereiche nur wenn der Text sie explizit nennt.

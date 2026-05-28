@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KI-Copilot – RAG</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+    <style>
+      :root { --pico-primary: #0b6ef3; }
+      code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .muted { opacity: 0.75; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+      @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <h2>KI-Copilot für Verzahnungswissen</h2>
+      <p class="muted">Striktes RAG: Antworten nur aus hochgeladenen PDFs + Bauteildaten.</p>
+
+      <details open>
+        <summary><strong>Wissensbasis</strong> (PDF Upload)</summary>
+        <div class="grid2">
+          <div>
+            <label>PDF hochladen
+              <input id="pdf" type="file" accept="application/pdf" />
+            </label>
+            <button id="uploadBtn">Indexieren</button>
+            <small id="uploadStatus" class="muted"></small>
+          </div>
+          <div>
+            <strong>Indexierte Dokumente</strong>
+            <div id="docs"></div>
+          </div>
+        </div>
+      </details>
+
+      <hr />
+
+      <section class="grid2">
+        <div>
+          <h3>Bauteildaten</h3>
+          <label>CAD-Datei (kommt später)
+            <input type="file" disabled />
+          </label>
+          <button id="randomGear">Zufälliges Zahnrad generieren</button>
+          <button class="secondary" id="reroll" disabled>Andere Werte würfeln</button>
+          <pre id="cad" style="min-height: 220px;"></pre>
+        </div>
+        <div>
+          <h3>Fragen</h3>
+          <p class="muted">Bitte pro Feld nur eine Frage. Verschiedene Themen in verschiedene Felder.</p>
+          <div id="questions"></div>
+          <button class="secondary" id="addQ">Weiteres Feld hinzufügen</button>
+          <label>Ausgabeformat
+            <select id="format">
+              <option value="kurz">kurz</option>
+              <option value="standard" selected>standard</option>
+              <option value="ausführlich">ausführlich</option>
+              <option value="stichpunkte">stichpunkte</option>
+              <option value="tabellarisch">tabellarisch</option>
+            </select>
+          </label>
+          <button id="ask">Fragen stellen</button>
+          <small id="askStatus" class="muted"></small>
+        </div>
+      </section>
+
+      <hr />
+
+      <section id="output" style="display:none;">
+        <details open>
+          <summary><strong>Allgemeine Bauteildaten</strong></summary>
+          <p id="cadHeader" class="muted"></p>
+          <pre id="cadOut"></pre>
+        </details>
+
+        <h3>Antworten</h3>
+        <div id="answers"></div>
+        <button class="secondary" id="reset">Weitere Fragen stellen</button>
+      </section>
+    </main>
+
+    <script>
+      const API = "";
+      const el = (id) => document.getElementById(id);
+      const state = { cad: {}, maxQ: 6, defaultQ: 3 };
+
+      function formatError(payload, fallback) {
+        if (!payload) return fallback;
+        const d = payload.detail ?? payload;
+        if (typeof d === "string") return d;
+        try { return JSON.stringify(d, null, 2); } catch (_) { return String(d); }
+      }
+
+      function addQuestionField(value = "") {
+        const idx = el("questions").children.length + 1;
+        const wrap = document.createElement("div");
+        wrap.innerHTML = `
+          <label>Frage ${idx}
+            <input type="text" value="${value.replaceAll('"','&quot;')}" />
+          </label>
+        `;
+        if (idx > 1) {
+          const btn = document.createElement("button");
+          btn.className = "secondary";
+          btn.type = "button";
+          btn.textContent = "Feld entfernen";
+          btn.onclick = () => wrap.remove();
+          wrap.appendChild(btn);
+        }
+        el("questions").appendChild(wrap);
+      }
+
+      function getQuestions() {
+        return Array.from(el("questions").querySelectorAll("input")).map(i => i.value).filter(v => v.trim());
+      }
+
+      async function refreshDocs() {
+        const r = await fetch(`${API}/documents`);
+        const docs = await r.json().catch(() => null);
+        if (!r.ok) {
+          el("docs").innerHTML = `<small class="muted">Error: ${formatError(docs, "documents failed")}</small>`;
+          return;
+        }
+        const wrap = document.createElement("div");
+        docs.forEach(d => {
+          const row = document.createElement("div");
+          row.style.display = "flex";
+          row.style.justifyContent = "space-between";
+          row.style.gap = "0.5rem";
+          row.style.alignItems = "center";
+          row.innerHTML = `<span>📄 ${d.source_path} — ${d.chunk_count} Chunks</span>`;
+          const del = document.createElement("button");
+          del.className = "secondary";
+          del.textContent = "Entfernen";
+          del.onclick = async () => {
+            if (!confirm("Dokument wirklich entfernen?")) return;
+            await fetch(`${API}/documents/${d.doc_hash}`, { method: "DELETE" });
+            await refreshDocs();
+          };
+          row.appendChild(del);
+          wrap.appendChild(row);
+        });
+        el("docs").innerHTML = "";
+        el("docs").appendChild(wrap);
+      }
+
+      function renderCad() {
+        el("cad").textContent = JSON.stringify(state.cad, null, 2);
+        el("reroll").disabled = !state.cad || Object.keys(state.cad).length === 0;
+      }
+
+      function renderOutput(resp) {
+        el("output").style.display = "block";
+        el("cadOut").textContent = JSON.stringify(resp.cad_metadata, null, 2);
+        const t = resp.cad_metadata?.verzahnungstyp;
+        const m = resp.cad_metadata?.modul;
+        const z = resp.cad_metadata?.zaehnezahl;
+        el("cadHeader").textContent = t ? `Untersuchtes Bauteil: ${t} mit Modul ${m} und ${z} Zähnen` : "";
+
+        el("answers").innerHTML = "";
+        resp.answers.forEach((a) => {
+          const card = document.createElement("article");
+          const sources = a.sources || [];
+          card.innerHTML = `
+            <header><strong>${a.question}</strong></header>
+            <div>${(a.answer_text || "").replaceAll("\n","<br/>")}</div>
+          `;
+          const det = document.createElement("details");
+          const sum = document.createElement("summary");
+          sum.innerHTML = "<strong>Quellen anzeigen</strong>";
+          det.appendChild(sum);
+          sources.forEach((s) => {
+            const p = document.createElement("div");
+            p.innerHTML = `
+              <p class="muted">[${s.qid}] ${s.source_path} — Seite ${s.page_number} — Similarity ${Number(s.similarity).toFixed(3)}</p>
+              <details><summary>Chunktext</summary><pre>${(s.text||"")}</pre></details>
+              <hr/>
+            `;
+            det.appendChild(p);
+          });
+          card.appendChild(det);
+          el("answers").appendChild(card);
+        });
+      }
+
+      el("uploadBtn").onclick = async () => {
+        const f = el("pdf").files?.[0];
+        if (!f) return;
+        el("uploadStatus").textContent = "Indexing…";
+        const fd = new FormData();
+        fd.append("file", f);
+        const r = await fetch(`${API}/upload`, { method: "POST", body: fd });
+        const j = await r.json().catch(() => null);
+        el("uploadStatus").textContent = r.ok ? `Ready: ${j.chunk_count} Chunks` : `Error: ${formatError(j, "upload failed")}`;
+        await refreshDocs();
+      };
+
+      el("randomGear").onclick = async () => {
+        const r = await fetch(`${API}/cad/random`);
+        state.cad = await r.json();
+        renderCad();
+      };
+      el("reroll").onclick = el("randomGear").onclick;
+
+      el("addQ").onclick = () => {
+        if (el("questions").children.length >= state.maxQ) return;
+        addQuestionField("");
+      };
+
+      el("ask").onclick = async () => {
+        const questions = getQuestions();
+        if (!questions.length) return;
+        el("askStatus").textContent = "Läuft…";
+        const r = await fetch(`${API}/ask`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questions, cad_metadata: state.cad, format: el("format").value })
+        });
+        const j = await r.json().catch(() => null);
+        el("askStatus").textContent = r.ok ? "Fertig." : `Error: ${formatError(j, "ask failed")}`;
+        if (r.ok) renderOutput(j);
+      };
+
+      el("reset").onclick = () => {
+        el("output").style.display = "none";
+        el("questions").innerHTML = "";
+        for (let i=0; i<state.defaultQ; i++) addQuestionField("");
+      };
+
+      // init
+      (async () => {
+        for (let i=0; i<state.defaultQ; i++) addQuestionField("");
+        await refreshDocs();
+        renderCad();
+      })();
+    </script>
+  </body>
+</html>
+

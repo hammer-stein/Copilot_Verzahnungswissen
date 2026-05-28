@@ -1,0 +1,30 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Secrets & Config
+config.yaml
+
+# Logs & Storage
+logs/
+storage/
+
+# LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.pdf
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/

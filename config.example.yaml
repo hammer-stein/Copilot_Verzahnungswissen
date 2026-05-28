@@ -1,0 +1,57 @@
+domain:
+  name: "Verzahnungen"
+  schema_path: "schemas/gears.yaml"
+  prompt_path: "prompts/answer_system_prompt.txt"
+
+embedder:
+  implementation: "bge_m3"
+  model_name: "BAAI/bge-m3"
+  device: "mps" # "cuda" | "cpu" | "mps"
+  use_sparse: true
+  max_length: 8192
+
+chunker:
+  implementation: "semantic"
+  threshold: 0.75
+  min_chunk_size: 100
+  max_chunk_size: 512
+  overlap_sentences: 1
+
+metadata_extractor:
+  implementation: "llama_ollama"
+  model_name: "llama3.2:3b"
+  ollama_url: "http://localhost:11434"
+  max_retries: 3
+  timeout_s: 30
+
+cad_adapter:
+  implementation: "random_gear_stub"
+
+vector_store:
+  implementation: "qdrant"
+  host: "localhost"
+  port: 6333
+  collection_name: "knowledge_base"
+
+retriever:
+  stage1_strict: true
+  stage1_relax_on_empty: true
+  stage1_min_candidates: 5
+  stage2_top_k: 5
+  stage2_min_similarity: 0.65
+  stage2_use_hybrid: true
+  hybrid_dense_weight: 0.7
+  hybrid_sparse_weight: 0.3
+  reranker_enabled: false
+  reranker_model: "BAAI/bge-reranker-v2-m3"
+
+answer_generator:
+  implementation: "llama_ollama"
+  model_name: "llama3.2:3b"
+  max_tokens: 800
+  temperature: 0.2
+
+frontend:
+  default_question_fields: 3
+  max_question_fields: 6
+  show_metadata_panel: true

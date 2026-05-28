@@ -1,0 +1,1504 @@
+\documentclass[12pt, a4paper]{article}
+
+% ============================================================
+% Pakete
+% ============================================================
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[ngerman]{babel}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\setlength{\headheight}{15pt}
+
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{mdframed}
+\usepackage{tcolorbox}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds, calc}
+
+% ============================================================
+% Farben
+% ============================================================
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{keywordcolor}{RGB}{0,0,180}
+\definecolor{commentcolor}{RGB}{100,130,80}
+\definecolor{stringcolor}{RGB}{180,0,0}
+\definecolor{accentblue}{RGB}{0,90,160}
+\definecolor{accentgray}{RGB}{90,90,90}
+\definecolor{boxbg}{RGB}{235,245,255}
+\definecolor{boxframe}{RGB}{0,90,160}
+
+% ============================================================
+% Listings-Stil
+% ============================================================
+% UTF-8-Unterstuetzung fuer listings (Umlaute + Sonderzeichen)
+\lstset{
+  literate=%
+    {ä}{{\"{a}}}1 {ö}{{\"{o}}}1 {ü}{{\"{u}}}1
+    {Ä}{{\"{A}}}1 {Ö}{{\"{O}}}1 {Ü}{{\"{U}}}1
+    {ß}{{\ss{}}}1
+    {→}{{$\rightarrow$}}1
+    {←}{{$\leftarrow$}}1
+    {…}{{...}}1
+    {│}{{|}}1
+    {├}{{+}}1
+    {└}{{+}}1
+    {─}{{-}}1
+    {✓}{{$\checkmark$}}1
+    {❌}{{X}}1
+}
+
+\lstdefinestyle{pythonstyle}{
+  language=Python,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{keywordcolor}\bfseries,
+  commentstyle=\color{commentcolor}\itshape,
+  stringstyle=\color{stringcolor},
+  showstringspaces=false,
+  breaklines=true,
+  breakatwhitespace=true,
+  numbers=left,
+  numberstyle=\tiny\color{accentgray},
+  numbersep=8pt,
+  tabsize=4,
+  captionpos=b,
+  xleftmargin=1.5em,
+}
+
+\lstdefinestyle{yamlstyle}{
+  language=,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{keywordcolor}\bfseries,
+  commentstyle=\color{commentcolor}\itshape,
+  stringstyle=\color{stringcolor},
+  showstringspaces=false,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{accentgray},
+  numbersep=8pt,
+  tabsize=2,
+  captionpos=b,
+  xleftmargin=1.5em,
+  morecomment=[l]{\#},
+  morestring=[b]",
+  morestring=[b]',
+}
+
+% ============================================================
+% tcolorbox-Stile
+% ============================================================
+\tcbuselibrary{skins, breakable}
+
+\newtcolorbox{infobox}[1][]{
+  colback=boxbg,
+  colframe=boxframe,
+  fonttitle=\bfseries,
+  title={#1},
+  breakable,
+}
+
+\newtcolorbox{definitionbox}[1][]{
+  colback=white,
+  colframe=accentgray,
+  fonttitle=\bfseries\color{white},
+  coltitle=white,
+  colbacktitle=accentgray,
+  title={#1},
+  breakable,
+}
+
+% ============================================================
+% Seitenlayout
+% ============================================================
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\textcolor{accentgray}{\small KI-Copilot für Verzahnungswissen}}
+\lhead{\textcolor{accentgray}{\small Systemdokumentation}}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=accentblue,
+  urlcolor=accentblue,
+  citecolor=accentblue,
+  pdftitle={KI-Copilot für Verzahnungswissen -- Systemdokumentation},
+  pdfauthor={Automatisch generiert},
+}
+
+% ============================================================
+% Titelformatierung
+% ============================================================
+\titleformat{\section}{\Large\bfseries\color{accentblue}}{}{0em}{\thesection\quad}[\titlerule]
+\titleformat{\subsection}{\large\bfseries\color{accentblue}}{}{0em}{\thesubsection\quad}
+\titleformat{\subsubsection}{\normalsize\bfseries}{}{0em}{\thesubsubsection\quad}
+
+% ============================================================
+% Dokument
+% ============================================================
+\begin{document}
+
+% ============================================================
+% Titelseite
+% ============================================================
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\Huge\bfseries\color{accentblue} KI-Copilot für Verzahnungswissen\par}
+  \vspace{0.5cm}
+  {\Large\color{accentgray} Vollständige Systemdokumentation\par}
+  \vspace{0.3cm}
+  {\large Aufbau, Datenfluss und Implementierung\par}
+  \vspace{2cm}
+
+  \begin{tcolorbox}[colback=boxbg, colframe=boxframe, width=0.85\textwidth]
+    \centering\small
+    Dieses Dokument beschreibt jeden Code-Baustein des modularen RAG-Systems
+    (Retrieval-Augmented Generation) für technisches Verzahnungswissen --
+    vom PDF-Upload bis zur Antwortgenerierung durch ein lokales Sprachmodell.
+  \end{tcolorbox}
+
+  \vspace{2cm}
+  \begin{tabular}{ll}
+    \textbf{Technologie-Stack:} & Python 3.9+, FastAPI, Qdrant, Ollama \\
+    \textbf{Embedding-Modell:}  & BAAI/bge-m3 (sentence-transformers) \\
+    \textbf{LLM:}               & llama3.2:3b (lokal via Ollama) \\
+    \textbf{Vektordatenbank:}   & Qdrant (Docker, Port 6333) \\
+    \textbf{Frontend:}          & HTML + Vanilla JS + Pico.css \\
+  \end{tabular}
+
+  \vfill
+  {\small Stand: Mai 2026}
+\end{titlepage}
+
+% ============================================================
+% Inhaltsverzeichnis
+% ============================================================
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Systemübersicht}
+% ============================================================
+
+Das System ist ein modulares \textbf{RAG-System} (\textit{Retrieval-Augmented Generation}),
+das Fachfragen zu Verzahnungen ausschließlich auf Basis hochgeladener PDF-Dokumente und
+übermittelter Bauteildaten beantwortet. Es verwendet \textbf{kein} internes Vorwissen
+des Sprachmodells.
+
+\subsection{Drei Eingangsdatenströme}
+
+\begin{enumerate}[leftmargin=2cm]
+  \item \textbf{Wissensbasis:} PDF-Dokumente (Normen, Lehrbücher, Produktionsdaten),
+        einmalig oder dynamisch hochgeladen, dauerhaft in Qdrant persistiert.
+  \item \textbf{Bauteildaten (CAD):} Pro Anfrage übermittelte Geometrie-Metadaten
+        eines konkreten Zahnrads (aktuell: Random-Stub, später: CAD-Datei-Auswertung).
+  \item \textbf{Fragen:} Natürlichsprachliche Fragen des Nutzers, mehrere parallel möglich.
+\end{enumerate}
+
+\subsection{Verzeichnisstruktur}
+
+\begin{lstlisting}[style=yamlstyle, caption={Verzeichnisstruktur des Projekts}]
+KI-Copilot fuer Verzahnungswissen/
+├── app/
+│   ├── api/
+│   │   └── main.py              # FastAPI-Endpunkte + App-Factory
+│   ├── core/
+│   │   ├── config.py            # Pydantic-Konfigurationsmodelle
+│   │   ├── factory.py           # Komponentenaufbau aus Config
+│   │   ├── interfaces.py        # Python Protocols (Schnittstellen)
+│   │   ├── schema.py            # Metadatenschema-Datenstrukturen
+│   │   ├── types.py             # Datenklassen (Chunk, Answer, ...)
+│   │   └── utils.py             # Hilfsfunktionen (Hash, JSON)
+│   ├── implementations/
+│   │   ├── answer_generator_ollama.py   # Antwortgenerierung via Ollama
+│   │   ├── cad_random_gear.py           # Zufaelliger Zahnrad-Generator
+│   │   ├── chunker_recursive.py         # Regelbasierter Chunker
+│   │   ├── chunker_semantic.py          # Semantischer Chunker
+│   │   ├── embedder_bge_m3.py           # Embedding mit bge-m3
+│   │   ├── metadata_extractor_ollama.py # LLM-Metadatenextraktion
+│   │   ├── ollama_client.py             # HTTP-Client fuer Ollama
+│   │   ├── pdf_loader_pymupdf.py        # PDF-Parsing mit PyMuPDF
+│   │   ├── qdrant_store.py              # Vektordatenbank-Adapter
+│   │   ├── retriever_two_stage.py       # Zweistufiger Retriever
+│   │   └── text_split.py               # Satz-Tokenisierung
+│   └── pipeline/
+│       └── indexer.py                   # Indizierungs-Pipeline
+├── frontend/
+│   └── index.html               # Einzel-HTML-Frontend
+├── prompts/
+│   └── answer_system_prompt.txt # Prompt-Template fuer LLM
+├── schemas/
+│   └── gears.yaml               # Domänen-Metadatenschema
+└── config.yaml                  # Zentrale Konfigurationsdatei
+\end{lstlisting}
+
+\newpage
+% ============================================================
+\section{Gesamtarchitektur und Datenfluss}
+% ============================================================
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=0.55cm and 0.9cm,
+  % Eingabe-/Ausgabe-Knoten
+  inbox/.style={rectangle, rounded corners=3pt, draw=accentblue, fill=boxbg,
+                text width=3.4cm, align=center, minimum height=0.75cm,
+                font=\small\bfseries\color{accentblue}},
+  % Komponenten-Knoten mit Dateinamen
+  sbox/.style={rectangle, rounded corners=3pt, draw=accentgray, fill=codebg,
+               text width=3.4cm, align=center, minimum height=0.9cm,
+               font=\small},
+  arrow/.style={-{Stealth[length=2mm]}, thick, color=accentblue},
+]
+
+%% ---- SPALTE 1: Indizierungspfad ----
+\node[inbox] (pdf)   {PDF-Upload};
+
+\node[sbox, below=0.7cm of pdf] (loader)
+  {\textbf{PDFLoader} \\ \texttt{\tiny pdf\_loader\_pymupdf.py}};
+
+\node[sbox, below=0.5cm of loader] (chunker)
+  {\textbf{Chunker} \\ \texttt{\tiny chunker\_recursive.py} \\ \texttt{\tiny chunker\_semantic.py} \\ \texttt{\tiny text\_split.py}};
+
+\node[sbox, below=0.5cm of chunker] (metaex)
+  {\textbf{MetadataExtractor} \\ \texttt{\tiny metadata\_extractor\_ollama.py} \\ \texttt{\tiny ollama\_client.py} \\ \texttt{\tiny gears.yaml}};
+
+\node[sbox, below=0.5cm of metaex] (emb1)
+  {\textbf{Embedder} \\ \texttt{\tiny embedder\_bge\_m3.py}};
+
+\node[sbox, below=0.5cm of emb1] (qdrant)
+  {\textbf{VectorStore} \\ \texttt{\tiny qdrant\_store.py}};
+
+%% ---- SPALTE 2: CAD-Pfad ----
+\node[inbox, right=1.0cm of pdf] (cad) {CAD-Daten};
+
+\node[sbox, below=0.7cm of cad] (cadgen)
+  {\textbf{CAD-Adapter} \\ \texttt{\tiny cad\_random\_gear.py}};
+
+%% ---- SPALTE 3: Anfragepfad ----
+\node[inbox, right=1.0cm of cad] (frage) {Frage(n)};
+
+\node[sbox, below=0.7cm of frage] (emb2)
+  {\textbf{Embedder} \\ \texttt{\tiny embedder\_bge\_m3.py}};
+
+\node[sbox, below=0.5cm of emb2] (ret)
+  {\textbf{TwoStageRetriever} \\ \texttt{\tiny retriever\_two\_stage.py} \\ \texttt{\tiny schema.py}};
+
+\node[sbox, below=0.5cm of ret] (ansgen)
+  {\textbf{AnswerGenerator} \\ \texttt{\tiny answer\_generator\_ollama.py} \\ \texttt{\tiny ollama\_client.py} \\ \texttt{\tiny answer\_system\_prompt.txt}};
+
+\node[inbox, below=0.5cm of ansgen] (out)
+  {Antwort + Quellen};
+
+%% ---- Pfeile Indizierung ----
+\draw[arrow] (pdf)     -- (loader);
+\draw[arrow] (loader)  -- (chunker);
+\draw[arrow] (chunker) -- (metaex);
+\draw[arrow] (metaex)  -- (emb1);
+\draw[arrow] (emb1)    -- (qdrant);
+
+%% ---- Pfeil CAD ----
+\draw[arrow] (cad) -- (cadgen);
+
+%% ---- Pfeile Anfrage ----
+\draw[arrow] (frage) -- (emb2);
+\draw[arrow] (emb2)  -- (ret);
+
+%% ---- Verbindungen zum Retriever / AnswerGenerator ----
+\draw[arrow] (qdrant.east)   -- ++(0.45,0) |- (ret.west);
+\draw[arrow] (cadgen.south)  -- ++(0,-0.35) -| (ret.north);
+\draw[arrow] (ret)           -- (ansgen);
+\draw[arrow] (cadgen.east)   -- ++(0.3,0) |- (ansgen.west);
+\draw[arrow] (ansgen) -- (out);
+
+\end{tikzpicture}
+\caption{Architekturdiagramm mit Datei-Zuordnung -- jeder Knoten zeigt die zugehörigen Quelldateien}
+\end{figure}
+
+Das System besteht aus zwei Hauptpfaden:
+
+\begin{itemize}
+  \item \textbf{Indizierungspfad} (einmalig pro PDF): PDF $\to$ Text $\to$ Chunks
+        $\to$ Metadaten $\to$ Vektoren $\to$ Qdrant
+  \item \textbf{Anfragepfad} (pro Nutzerfrage): Frage $\to$ Embedding
+        $\to$ Zweistufige Suche $\to$ LLM-Antwort
+\end{itemize}
+
+\subsection{Vollständige Datei-Zuordnung zu den Schaubild-Schritten}
+
+Die folgende Tabelle ordnet \textbf{jede Datei aus Abschnitt~1.2} einem konkreten Schritt
+im Architekturdiagramm zu. Dateien der Kernschicht (\texttt{core/}) sind querschnittlich --
+sie unterstützen mehrere Schritte gleichzeitig.
+
+\begin{longtable}{p{5.2cm} p{3.5cm} p{5.5cm}}
+\toprule
+\textbf{Datei} & \textbf{Schritt im Diagramm} & \textbf{Aufgabe} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Datei} & \textbf{Schritt im Diagramm} & \textbf{Aufgabe} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+\multicolumn{3}{l}{\textit{\small Indizierungspfad}} \\[2pt]
+\texttt{pdf\_loader\_pymupdf.py}     & PDFLoader            & PDF seitenweise in Text umwandeln; SHA-256 erzeugen \\[3pt]
+\texttt{chunker\_recursive.py}       & Chunker              & Regelbasierte Aufteilung in Textsegmente \\[3pt]
+\texttt{chunker\_semantic.py}        & Chunker              & Kosinusähnlichkeit erkennt inhaltliche Grenzen \\[3pt]
+\texttt{text\_split.py}              & Chunker              & Satztrennung und Token-Approximation für beide Chunker \\[3pt]
+\texttt{metadata\_extractor\_ollama.py} & MetadataExtractor & LLM extrahiert Metadaten pro Chunk als JSON \\[3pt]
+\texttt{embedder\_bge\_m3.py}        & Embedder (Indizierung \& Anfrage) & BAAI/bge-m3 erzeugt Dense-Vektoren; wird in beiden Pfaden genutzt \\[3pt]
+\texttt{qdrant\_store.py}            & VectorStore          & Upsert, Vektorsuche, Löschung, Dokumentliste in Qdrant \\[3pt]
+\texttt{pipeline/indexer.py}         & Orchestrierung Indizierung & Koordiniert Schritte 1--6 (Loader $\to$ Qdrant) \\[6pt]
+
+\multicolumn{3}{l}{\textit{\small CAD-Pfad}} \\[2pt]
+\texttt{cad\_random\_gear.py}        & CAD-Adapter          & Generiert zufällige, geometrisch konsistente Zahnraddaten \\[6pt]
+
+\multicolumn{3}{l}{\textit{\small Anfragepfad}} \\[2pt]
+\texttt{retriever\_two\_stage.py}    & TwoStageRetriever    & Stage-1 Metadatenfilter + Stage-2 Vektorsuche \\[3pt]
+\texttt{answer\_generator\_ollama.py} & AnswerGenerator     & Baut Prompt auf, ruft LLM auf, gibt Antwort + Quellen zurück \\[3pt]
+\texttt{ollama\_client.py}           & MetadataExtractor \& AnswerGenerator & HTTP-Client für alle Ollama-Aufrufe \\[3pt]
+\texttt{prompts/answer\_system\_prompt.txt} & AnswerGenerator & Prompt-Template mit Platzhaltern (DOMAIN, CHUNKS, FRAGE, FORMAT) \\[6pt]
+
+\multicolumn{3}{l}{\textit{\small API- und Frontend-Schicht}} \\[2pt]
+\texttt{api/main.py}                 & Gesamte Pipeline     & FastAPI-Endpunkte; startet Indizierung und parallele Anfragen \\[3pt]
+\texttt{frontend/index.html}         & Nutzerinterface      & Einzel-HTML-Datei; bindet alle Endpunkte an, zeigt Antworten \\[6pt]
+
+\multicolumn{3}{l}{\textit{\small Konfiguration und Schema}} \\[2pt]
+\texttt{config.yaml}                 & Alle Schritte        & Zentrale Parameterdatei; steuert jede Komponente \\[3pt]
+\texttt{schemas/gears.yaml}          & MetadataExtractor \& TwoStageRetriever & Domänenschema: Feldnamen, Typen, Filterbedingungen \\[6pt]
+
+\multicolumn{3}{l}{\textit{\small Kernschicht -- querschnittlich in allen Schritten}} \\[2pt]
+\texttt{core/types.py}               & Alle Schritte        & Gemeinsame Datenklassen (Chunk, Answer, ...) -- fließen durch die gesamte Pipeline \\[3pt]
+\texttt{core/interfaces.py}          & Alle Schritte        & Protokoll-Definitionen; Vertrag zwischen Factory und Implementierungen \\[3pt]
+\texttt{core/config.py}              & Startup              & Pydantic-Modelle; validiert \texttt{config.yaml} beim Serverstart \\[3pt]
+\texttt{core/factory.py}             & Startup              & Instanziiert alle Komponenten aus der Config; Dependency Injection \\[3pt]
+\texttt{core/schema.py}              & MetadataExtractor \& TwoStageRetriever & Lädt und repräsentiert das YAML-Domänenschema als Datenstruktur \\[3pt]
+\texttt{core/utils.py}               & PDFLoader \& API     & SHA-256-Hashfunktion (Dokumenten-ID) + stabiles JSON-Serialisieren \\
+
+\bottomrule
+\caption{Zuordnung aller Dateien aus Abschnitt~1.2 zu den Schaubild-Schritten}
+\end{longtable}
+
+\newpage
+% ============================================================
+\section{Kernschicht: \texttt{app/core/}}
+% ============================================================
+
+Die Kernschicht enthält ausschließlich abstrakte Definitionen, Datenstrukturen und
+Konfigurationslogik -- keinen Algorithmus-Code. Sie ist vollständig implementierungsunabhängig.
+
+% ------------------------------------------------------------
+\subsection{\texttt{types.py} -- Datenstrukturen}
+% ------------------------------------------------------------
+
+Definiert alle gemeinsamen Datenklassen des Systems als unveränderliche
+\texttt{@dataclass(frozen=True)}-Objekte. Diese fließen als ``Datenträger'' durch
+alle Komponenten.
+
+\begin{lstlisting}[style=pythonstyle, caption={Kerntypen des Systems (types.py)}]
+@dataclass(frozen=True)
+class RawDocumentPage:
+    page_number: int   # 1-basiert
+    text: str          # Extrahierter Seitentext
+
+@dataclass(frozen=True)
+class RawDocument:
+    source_path: str   # Absoluter Pfad zur PDF
+    doc_hash: str      # SHA-256 der Datei (zur Identifikation)
+    pages: list[RawDocumentPage]
+
+@dataclass(frozen=True)
+class Chunk:
+    text: str          # Textsegment
+    source_path: str
+    page_number: int
+    position: int      # Monoton steigende Position im Dokument
+    doc_hash: str      # Zugehoerige Dokument-ID
+
+@dataclass(frozen=True)
+class EmbeddedChunk:
+    chunk: Chunk
+    dense_vector: list[float]    # Embedding-Vektor
+    sparse_vector: Optional[...]  # fuer spaeteren Hybrid-Modus
+    metadata: dict[str, Any]     # LLM-extrahierte Metadaten
+
+@dataclass(frozen=True)
+class RetrievedChunk:
+    chunk: Chunk
+    metadata: dict[str, Any]
+    similarity: float   # Aehnlichkeitsscore aus Stage 2
+\end{lstlisting}
+
+\begin{infobox}[Designentscheidung: frozen=True]
+Alle Datenklassen sind eingefroren (\texttt{frozen=True}). Das verhindert versehentliche
+Mutationen, macht die Objekte hashbar und thread-sicher -- wichtig, da der Server
+parallele Anfragen über \texttt{asyncio.gather} verarbeitet.
+\end{infobox}
+
+Das \texttt{Answer}-Ergebnis ist als \texttt{TypedDict} definiert, da es direkt
+als JSON-serialisierbare Struktur an FastAPI zurückgegeben wird:
+
+\begin{lstlisting}[style=pythonstyle, caption={Antwortformat (types.py)}]
+class AnswerSource(TypedDict):
+    qid: str           # "Q1", "Q2", ... (Quellenkennung im Antworttext)
+    source_path: str
+    page_number: int
+    similarity: float
+    text: str          # Chunk-Originaltext
+
+class Answer(TypedDict):
+    question: str
+    answer_text: str
+    sources: list[AnswerSource]
+\end{lstlisting}
+
+% ------------------------------------------------------------
+\subsection{\texttt{interfaces.py} -- Komponentenschnittstellen}
+% ------------------------------------------------------------
+
+Definiert alle Komponenten als Python \texttt{Protocol}-Klassen. Protocols ermöglichen
+strukturelles Subtyping: Eine Klasse implementiert eine Schnittstelle, wenn sie die
+passenden Methoden hat -- ohne explizite Vererbung.
+
+\begin{lstlisting}[style=pythonstyle, caption={Protokoll-Schnittstellen (interfaces.py)}]
+class DocumentLoader(Protocol):
+    def load(self, file_path: Path) -> RawDocument: ...
+
+class Chunker(Protocol):
+    def chunk(self, document: RawDocument) -> list[Chunk]: ...
+
+class Embedder(Protocol):
+    def embed(self, texts: list[str]) -> EmbeddingResult: ...
+
+class MetadataExtractor(Protocol):
+    def extract(self, chunk: Chunk, schema: MetadataSchema) -> dict: ...
+
+class CADAdapter(Protocol):
+    def extract(self, file_path: Optional[Path]) -> dict: ...
+
+class VectorStore(Protocol):
+    def upsert(self, chunks: list[EmbeddedChunk]) -> None: ...
+    def search(self, query_vector, *, filter, top_k, threshold) -> list[SearchResult]: ...
+    def delete_by_doc_hash(self, doc_hash: str) -> None: ...
+    def list_documents(self) -> list[DocumentInfo]: ...
+
+class Retriever(Protocol):
+    def retrieve(self, question: str, cad_metadata: dict) -> list[RetrievedChunk]: ...
+
+class AnswerGenerator(Protocol):
+    def generate(self, *, question, chunks, cad_metadata, output_format) -> Answer: ...
+\end{lstlisting}
+
+\begin{infobox}[Warum Protocols statt ABCs?]
+\texttt{Protocol} (PEP 544) erlaubt es, Implementierungen auszutauschen ohne gemeinsame
+Basisklasse. Ein zukünftiger \texttt{OpenAIEmbedder} muss nur die Methode \texttt{embed}
+haben -- er muss nirgendwo von \texttt{Embedder} erben. Das senkt den Kopplungsgrad.
+\end{infobox}
+
+% ------------------------------------------------------------
+\subsection{\texttt{config.py} -- Konfigurationsmodelle}
+% ------------------------------------------------------------
+
+Alle Konfigurationsparameter sind als Pydantic-\texttt{BaseModel}-Klassen typisiert und
+werden beim Serverstart gegen \texttt{config.yaml} validiert.
+
+\begin{lstlisting}[style=pythonstyle, caption={Konfigurationsstruktur (config.py)}]
+class AppConfig(BaseModel):
+    domain:            DomainConfig
+    embedder:          EmbedderConfig
+    chunker:           ChunkerConfig
+    metadata_extractor: MetadataExtractorConfig
+    cad_adapter:       CADAdapterConfig
+    vector_store:      VectorStoreConfig
+    retriever:         RetrieverConfig
+    answer_generator:  AnswerGeneratorConfig
+    frontend:          FrontendConfig
+
+def load_config(path: Path) -> AppConfig:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return AppConfig.model_validate(raw)
+\end{lstlisting}
+
+Jeder Abschnitt der \texttt{config.yaml} wird einem eigenen Modell zugeordnet. Pydantic
+wirft beim Start einen Validierungsfehler, wenn ein Pflichtfeld fehlt oder ein Wert
+außerhalb des erlaubten Wertebereichs liegt (z.\,B. \texttt{device} $\notin$ \{cuda, cpu, mps\}).
+
+\vspace{0.5em}
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textbf{Config-Sektion} & \textbf{Wichtigste Parameter} \\
+\midrule
+\texttt{domain} & Name, Pfad zu Schema-YAML, Pfad zu Prompt-Datei \\
+\texttt{embedder} & Modellname, Gerät (mps/cuda/cpu), max. Sequenzlänge \\
+\texttt{chunker} & Implementierung (semantic/recursive), Schwellenwert, Min/Max-Tokens \\
+\texttt{metadata\_extractor} & Ollama-Modell, URL, Timeout, max. Wiederholungsversuche \\
+\texttt{retriever} & stage1\_strict, stage1\_relax\_on\_empty, top\_k, min\_similarity \\
+\texttt{answer\_generator} & Modell, Standardformat, max. Tokens, Temperatur \\
+\bottomrule
+\end{tabularx}
+\caption{Konfigurationssektionen und ihre Parameter}
+\end{table}
+
+% ------------------------------------------------------------
+\subsection{\texttt{schema.py} -- Metadatenschema}
+% ------------------------------------------------------------
+
+Definiert die Datenstruktur für das domänenspezifische Metadatenschema, das aus einer
+externen YAML-Datei geladen wird.
+
+\begin{lstlisting}[style=pythonstyle, caption={Schema-Datenstrukturen (schema.py)}]
+@dataclass(frozen=True)
+class SchemaField:
+    name: str
+    type: str                      # "string", "number", ...
+    filter_type: Optional[FilterType]  # "exact", "range", "set"
+    enum: Optional[list[str]]      # erlaubte Werte
+    nullable: bool
+    description: Optional[str]
+    range_fields: Optional[list[str]]  # z.B. ["modul_min", "modul_max"]
+
+@dataclass(frozen=True)
+class MetadataSchema:
+    domain: str
+    description: Optional[str]
+    fields: list[SchemaField]
+    extraction_prompt_hint: Optional[str]
+
+    @property
+    def filter_fields(self) -> list[SchemaField]:
+        return [f for f in self.fields if f.filter_type is not None]
+\end{lstlisting}
+
+% ------------------------------------------------------------
+\subsection{\texttt{utils.py} -- Hilfsfunktionen}
+% ------------------------------------------------------------
+
+\begin{lstlisting}[style=pythonstyle, caption={Hilfsfunktionen (utils.py)}]
+def sha256_file(path: Path) -> str:
+    # SHA-256-Hash einer Datei (chunked, speichereffizient)
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+def stable_json_dumps(obj: Any) -> str:
+    # Deterministisches JSON (sort_keys) fuer Logs
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2)
+\end{lstlisting}
+
+Der SHA-256-Hash dient als stabiler Dokumentenidentifikator (\texttt{doc\_hash}).
+Wird dieselbe Datei erneut hochgeladen, ist der Hash identisch -- das ermöglicht
+duplicate detection und zuverlässige Löschung aller zugehörigen Chunks.
+
+% ------------------------------------------------------------
+\subsection{\texttt{factory.py} -- Komponentenaufbau}
+% ------------------------------------------------------------
+
+Die Factory liest die validierte Konfiguration und instanziiert alle konkreten
+Implementierungen. Die gesamte Abhängigkeitsauflösung findet hier statt.
+
+\begin{lstlisting}[style=pythonstyle, caption={Factory-Funktion (factory.py)}]
+def build_components(config: AppConfig, *, base_dir: Path) -> Components:
+    loader   = PDFLoader()
+    embedder = BGEM3Embedder(model_name=..., device=..., ...)
+
+    # Auswahl Chunker-Implementierung
+    if config.chunker.implementation == "semantic":
+        chunker = SemanticChunker(embedder=embedder, threshold=..., ...)
+    elif config.chunker.implementation == "recursive":
+        chunker = RecursiveTextChunker(...)
+
+    metadata_extractor = OllamaMetadataExtractor(...)
+    cad_adapter        = RandomGearGenerator()
+    vector_store       = QdrantStore(host=..., port=..., ...)
+    retriever          = TwoStageRetriever(embedder=embedder, store=vector_store, ...)
+    answer_generator   = OllamaAnswerGenerator(...)
+
+    return Components(loader, chunker, embedder, ...)
+\end{lstlisting}
+
+\begin{infobox}[Austauschbarkeit durch Factory]
+Will man z.\,B. den Chunker von \texttt{recursive} auf \texttt{semantic} umstellen,
+genügt eine Änderung in \texttt{config.yaml}. Die Factory instanziiert dann automatisch
+die andere Klasse. Kein Code-Eingriff notwendig.
+\end{infobox}
+
+\newpage
+% ============================================================
+\section{Indizierungspipeline: \texttt{app/pipeline/indexer.py}}
+% ============================================================
+
+Der \texttt{KnowledgeBaseIndexer} orchestriert den vollständigen Weg von der PDF-Datei
+bis zu den in Qdrant gespeicherten Vektoren.
+
+\begin{lstlisting}[style=pythonstyle, caption={Indizierungs-Pipeline (indexer.py)}]
+def index_pdf(self, file_path: Path) -> DocumentInfo:
+    # 1. PDF laden -> RawDocument
+    doc = self.loader.load(file_path)
+
+    # 2. In Chunks aufteilen -> list[Chunk]
+    chunks = self.chunker.chunk(doc)
+
+    # 3. Pro Chunk: Metadaten per LLM extrahieren -> list[dict]
+    meta_list = []
+    for c in chunks:
+        raw_meta = self.metadata_extractor.extract(c, self.schema)
+        meta_list.append(_sanitize_metadata(self.schema, raw_meta))
+
+    # 4. Alle Chunk-Texte gemeinsam einbetten -> list[list[float]]
+    vectors = self.embedder.embed([c.text for c in chunks]).dense_vectors
+
+    # 5. EmbeddedChunks zusammenstellen
+    embedded = [EmbeddedChunk(chunk=c, dense_vector=v, sparse_vector=None,
+                              metadata=m) for c, v, m in zip(chunks, vectors, meta_list)]
+
+    # 6. In Qdrant speichern
+    self.store.upsert(embedded)
+    return DocumentInfo(source_path=..., doc_hash=..., chunk_count=len(embedded))
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{clX}
+\toprule
+\textbf{Schritt} & \textbf{Komponente} & \textbf{Ausgabe} \\
+\midrule
+1 & PDFLoader & \texttt{RawDocument} (Seiten mit Text + Hash) \\
+2 & Chunker & \texttt{list[Chunk]} (Textsegmente mit Positionsinfo) \\
+3 & MetadataExtractor & \texttt{list[dict]} (LLM-extrahierte Metadaten) \\
+4 & Embedder & \texttt{list[list[float]]} (Dichte Vektoren) \\
+5 & --- & \texttt{list[EmbeddedChunk]} (Chunks + Vektoren + Metadaten) \\
+6 & VectorStore & gespeichert in Qdrant \\
+\bottomrule
+\end{tabularx}
+\caption{Schritte der Indizierungspipeline}
+\end{table}
+
+Die Funktion \texttt{\_sanitize\_metadata} filtert LLM-Ausgaben: Nur Felder, die im
+Schema definiert sind, werden in Qdrant gespeichert. Das verhindert das Einschleusen
+unbekannter Schlüssel.
+
+\newpage
+% ============================================================
+\section{Implementierungen: \texttt{app/implementations/}}
+% ============================================================
+
+% ------------------------------------------------------------
+\subsection{PDF-Loader: \texttt{pdf\_loader\_pymupdf.py}}
+% ------------------------------------------------------------
+
+\begin{lstlisting}[style=pythonstyle, caption={PDF-Loader mit PyMuPDF}]
+class PDFLoader:
+    def load(self, file_path: Path) -> RawDocument:
+        doc_hash = sha256_file(file_path)  # Datei-Fingerabdruck
+        doc = fitz.open(file_path)         # fitz = PyMuPDF
+        pages = []
+        for i in range(doc.page_count):
+            page = doc.load_page(i)
+            text = page.get_text("text") or ""
+            pages.append(RawDocumentPage(page_number=i + 1, text=text))
+        doc.close()
+        return RawDocument(source_path=str(file_path),
+                           doc_hash=doc_hash, pages=pages)
+\end{lstlisting}
+
+PyMuPDF (\texttt{fitz}) extrahiert den Reintext seitenweise. Die Seitennummer wird
+1-basiert gespeichert und bleibt bis zur Antwort erhalten -- so kann jede Quellenangabe
+die genaue Seitenzahl nennen.
+
+% ------------------------------------------------------------
+\subsection{Text-Splitting: \texttt{text\_split.py}}
+% ------------------------------------------------------------
+
+Hilfsfunktionen für beide Chunker-Implementierungen:
+
+\begin{lstlisting}[style=pythonstyle, caption={Satztrennung und Token-Approximation}]
+# Satzerkennung: Trennt nach [.!?] + Leerzeichen vor Grossbuchstabe/Zahl
+_sentence_re = re.compile(r"(?<=[.!?])\s+(?=[A-ZAEOEU0-9])")
+
+def split_sentences(text: str) -> list[str]:
+    parts = _sentence_re.split(text)
+    return [p.strip() for p in parts if p.strip()]
+
+def approx_tokens(text: str) -> int:
+    # Wortanzahl als Naherung (modell-/bibliotheksunabhaengig)
+    return max(1, len(re.findall(r"\S+", text)))
+\end{lstlisting}
+
+Die Token-Approximation über Wortzählung ist bewusst modellunabhängig -- die
+Konfigurationsparameter \texttt{min\_chunk\_size} und \texttt{max\_chunk\_size}
+beziehen sich auf diese Einheit.
+
+% ------------------------------------------------------------
+\subsection{Semantischer Chunker: \texttt{chunker\_semantic.py}}
+% ------------------------------------------------------------
+
+Der semantische Chunker erkennt inhaltliche Grenzen zwischen Sätzen über den
+Kosinus-Abstand ihrer Embeddings.
+
+\begin{lstlisting}[style=pythonstyle, caption={Semantische Grenzenerkennung}]
+def chunk(self, document: RawDocument) -> list[Chunk]:
+    for page in document.pages:
+        sentences = split_sentences(page.text)
+        sent_vecs = self.embedder.embed(sentences).dense_vectors
+
+        # Grenzen dort, wo Kosinusaehnlichkeit unter Schwellenwert faellt
+        boundaries = set()
+        for i in range(1, len(sentences)):
+            sim = _cosine(sent_vecs[i-1], sent_vecs[i])
+            if sim < self.threshold:  # Default: 0.75
+                boundaries.add(i)
+
+        # Segmente zu Chunks packen (Max-Token-Limit beachten, Overlap hinzufuegen)
+        ...
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Bedeutung} \\
+\midrule
+\texttt{threshold = 0.75} & Mindest-Ähnlichkeit, unter der eine Grenze gesetzt wird \\
+\texttt{min\_chunk\_tokens = 100} & Chunks unter dieser Größe werden verworfen \\
+\texttt{max\_chunk\_tokens = 512} & Maximale Chunk-Größe (Tokens) \\
+\texttt{overlap\_sentences = 1} & Sätze, die in aufeinanderfolgenden Chunks überlappen \\
+\bottomrule
+\end{tabular}
+\caption{Parameter des semantischen Chunkers}
+\end{table}
+
+% ------------------------------------------------------------
+\subsection{Rekursiver Chunker: \texttt{chunker\_recursive.py}}
+% ------------------------------------------------------------
+
+Einfachere Alternative ohne LLM-Aufruf beim Chunking: Sätze werden sequentiell
+zusammengepackt bis das Token-Limit erreicht ist.
+
+\begin{lstlisting}[style=pythonstyle, caption={Regelbasierter Chunker}]
+def chunk(self, document: RawDocument) -> list[Chunk]:
+    for page in document.pages:
+        sentences = split_sentences(page.text)
+        start = 0
+        while start < len(sentences):
+            cur, cur_tokens = [], 0
+            i = start
+            while i < len(sentences):
+                s_tokens = approx_tokens(sentences[i])
+                if cur and (cur_tokens + s_tokens) > self.max_chunk_tokens:
+                    break  # naechsten Chunk beginnen
+                cur.append(sentences[i])
+                cur_tokens += s_tokens
+                i += 1
+            # Overlap: naechster Chunk startet `overlap_sentences` Saetze zurueck
+            start = max(i - self.overlap_sentences, start + 1)
+\end{lstlisting}
+
+\begin{infobox}[Wahl des Chunkers]
+Der rekursive Chunker ist schneller (kein Embedding-Aufruf), produziert aber gleichmäßigere,
+inhaltlich weniger kohärente Chunks. Der semantische Chunker ist langsamer, erzeugt
+jedoch thematisch konsistentere Segmente -- empfohlen für Fachliteratur.
+In \texttt{config.yaml}: \texttt{chunker.implementation: "semantic"} oder \texttt{"recursive"}.
+\end{infobox}
+
+% ------------------------------------------------------------
+\subsection{Embedder: \texttt{embedder\_bge\_m3.py}}
+% ------------------------------------------------------------
+
+\begin{lstlisting}[style=pythonstyle, caption={BGE-M3 Embedding-Wrapper}]
+class BGEM3Embedder:
+    def __init__(self, *, model_name, device, max_length, use_sparse):
+        self._model = SentenceTransformer(model_name, device=device)
+
+    def embed(self, texts: list[str]) -> EmbeddingResult:
+        vectors = self._model.encode(
+            texts,
+            normalize_embeddings=True,   # L2-Normalisierung fuer Kosinus-Aehnlichkeit
+            convert_to_numpy=False,
+            show_progress_bar=False,
+        )
+        dense_vectors = [list(map(float, v)) for v in vectors]
+        return EmbeddingResult(dense_vectors=dense_vectors, sparse_vectors=None)
+\end{lstlisting}
+
+Das Modell \texttt{BAAI/bge-m3} ist mehrsprachig und unterstützt bis zu 8192 Tokens
+pro Sequenz. Die L2-Normalisierung (\texttt{normalize\_embeddings=True}) stellt sicher,
+dass der Kosinus-Abstand korrekt als Ähnlichkeitsmaß verwendet werden kann.
+
+\begin{definitionbox}[Wichtig: Gleiches Modell überall]
+Wissensbasis und Anfrage müssen denselben Embedder verwenden, da sie im gleichen
+Vektorraum repräsentiert sein müssen. Die Factory stellt sicher, dass beide
+Codepfade dieselbe \texttt{BGEM3Embedder}-Instanz verwenden.
+\end{definitionbox}
+
+% ------------------------------------------------------------
+\subsection{Metadaten-Extraktor: \texttt{metadata\_extractor\_ollama.py}}
+% ------------------------------------------------------------
+
+Für jeden Chunk wird ein LLM (llama3.2:3b) aufgerufen, um domänenspezifische
+Metadaten im JSON-Format zu extrahieren.
+
+\begin{lstlisting}[style=pythonstyle, caption={LLM-basierte Metadatenextraktion}]
+def extract(self, chunk: Chunk, schema: MetadataSchema) -> dict:
+    # Prompt mit Schema-Beschreibung und Chunk-Text aufbauen
+    prompt = (
+        "Gib AUSSCHLIESSLICH ein JSON-Objekt zurueck.\n"
+        f"SCHEMA:\n{schema_desc}\n\n"
+        f"CHUNK:\n{chunk.text}"
+    )
+    # Bis zu max_retries Versuche (LLM-Ausgabe kann ungueltig sein)
+    for _ in range(self.max_retries):
+        try:
+            data = self.client.generate_json(model=..., prompt=...,
+                                             temperature=0.0, max_tokens=400)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            continue
+    return {}  # Fallback: leere Metadaten
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lp{9cm}}
+\toprule
+\textbf{Metadatenfeld} & \textbf{Beschreibung (aus gears.yaml)} \\
+\midrule
+\texttt{verzahnungstyp} & Art der Verzahnung: Stirnrad, Schrägverzahnung, Kegelrad, ... \\
+\texttt{modul} & Modul in mm (Bereichsfeld: modul\_min, modul\_max) \\
+\texttt{norm} & Referenznorm (DIN 3960, ISO 1328 o.\,ä.) \\
+\texttt{themenkategorie} & Geometrie, Festigkeit, Fertigung, Werkstoff, ... \\
+\texttt{anwendungsbereich} & Getriebe, Antrieb, Lenkung, ... (optional) \\
+\bottomrule
+\end{tabular}
+\caption{Metadatenfelder für die Domäne Verzahnungen (schemas/gears.yaml)}
+\end{table}
+
+% ------------------------------------------------------------
+\subsection{CAD-Adapter: \texttt{cad\_random\_gear.py}}
+% ------------------------------------------------------------
+
+Aktuell generiert dieser Adapter zufällige, geometrisch konsistente Zahnraddaten.
+Er implementiert dieselbe \texttt{CADAdapter}-Schnittstelle wie ein späterer echter
+CAD-File-Parser.
+
+\begin{lstlisting}[style=pythonstyle, caption={Zufalls-Zahnrad-Generator}]
+class RandomGearGenerator:
+    def extract(self, file_path=None) -> dict:
+        typ   = random.choice(["Stirnrad", "Schraegverzahnung"])
+        modul = random.choice([1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0])
+        z     = random.randint(15, 60)
+        alpha = 20.0           # Standardeingriffswinkel
+        beta  = 0.0 if typ == "Stirnrad" else random.choice([8,10,12,15,20])
+        x     = round(random.uniform(-0.3, 0.5), 2)  # Profilverschiebung
+
+        d  = modul * z                        # Teilkreisdurchmesser
+        da = d + 2 * modul * (1 + x)          # Kopfkreisdurchmesser
+        df = d - 2 * modul * (1.25 - x)       # Fusskreisdurchmesser
+
+        return {"verzahnungstyp": typ, "modul": modul, "zaehnezahl": z,
+                "eingriffswinkel": alpha, "schraegungswinkel": beta,
+                "profilverschiebung": x, "teilkreisdurchmesser": round(d,2),
+                "kopfkreisdurchmesser": round(da,2), "fusskreisdurchmesser": round(df,2),
+                "zahnbreite": round(modul * random.uniform(8, 14), 1),
+                "werkstoff": random.choice(["16MnCr5","20MnCr5","42CrMo4","C45"]),
+                "haerte": random.choice(["verguetet","einsatzgehaertet","nitriert"]),
+                "verzahnungsqualitaet": random.choice([6, 7, 8])}
+\end{lstlisting}
+
+Die geometrischen Zusammenhänge (Kopfkreis, Fußkreis) sind nach DIN 3960 berechnet
+und in sich konsistent -- die generierten Daten sind technisch plausibel.
+
+% ------------------------------------------------------------
+\subsection{Qdrant-VectorStore: \texttt{qdrant\_store.py}}
+% ------------------------------------------------------------
+
+Adapter zwischen dem System und der Qdrant-Vektordatenbank. Verwaltet Collection,
+Upsert, Suche und Löschung.
+
+\begin{lstlisting}[style=pythonstyle, caption={Vektordatenbank-Adapter (Qdrant)}]
+class QdrantStore:
+    def __init__(self, *, host, port, collection_name):
+        self.client = QdrantClient(host=host, port=port)
+
+    def upsert(self, chunks: list[EmbeddedChunk]) -> None:
+        self._ensure_collection(vector_size=len(chunks[0].dense_vector))
+        points = []
+        for ec in chunks:
+            # Stabiler Punkt-ID aus (doc_hash, position) -- kein UUID-Generieren
+            pid = abs(hash((ec.chunk.doc_hash, ec.chunk.position))) % (2**63)
+            payload = {"text": ..., "source_path": ..., "page_number": ...,
+                       "position": ..., "doc_hash": ..., "metadata": ec.metadata}
+            points.append(PointStruct(id=pid, vector=ec.dense_vector, payload=payload))
+        self.client.upsert(collection_name=..., points=points)
+
+    def search(self, query_vector, *, filter, top_k, threshold):
+        qfilter = _dict_filter_to_qdrant(filter)
+        response = self.client.query_points(   # Qdrant >= 1.10
+            collection_name=self.collection_name,
+            query=query_vector,
+            query_filter=qfilter,
+            limit=top_k,
+            score_threshold=threshold,
+            with_payload=True,
+        )
+        return [SearchResult(chunk=..., score=h.score, ...) for h in response.points]
+\end{lstlisting}
+
+\begin{infobox}[Stabiler Punkt-ID]
+Statt einer zufälligen UUID wird der Punkt-ID als deterministischer Hash aus
+\texttt{(doc\_hash, position)} berechnet. Bei erneutem Hochladen derselben Datei
+werden die alten Punkte überschrieben (\texttt{upsert}), nicht dupliziert.
+\end{infobox}
+
+Die Filterfunktion \texttt{\_dict\_filter\_to\_qdrant} übersetzt das interne
+Dict-Format in Qdrant-\texttt{Filter}-Objekte und unterstützt drei Konditionstypen:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{llp{7cm}}
+\toprule
+\textbf{Typ} & \textbf{Qdrant-Kondition} & \textbf{Verwendung} \\
+\midrule
+\texttt{match} & \texttt{FieldCondition(match=MatchValue)} & Exakter Wertvergleich (z.\,B. Verzahnungstyp) \\
+\texttt{range} & \texttt{FieldCondition(range=Range)} & Wertebereich (z.\,B. Modul) \\
+\texttt{contains} & \texttt{FieldCondition(match=MatchValue)} & Listenzugehörigkeit (z.\,B. Themenkategorie) \\
+\bottomrule
+\end{tabular}
+\caption{Unterstützte Filterkonditionstypen}
+\end{table}
+
+Alle Konditionstypen unterstützen \texttt{or\_empty=True}: Ein Chunk ohne dieses
+Metadatenfeld wird nicht ausgeschlossen.
+
+% ------------------------------------------------------------
+\subsection{Zweistufiger Retriever: \texttt{retriever\_two\_stage.py}}
+% ------------------------------------------------------------
+
+Das Herzstück des RAG-Systems. Findet für eine Frage die relevantesten Chunks
+durch einen deterministischen Metadatenfilter (Stage 1) gefolgt von einer
+Vektorähnlichkeitssuche (Stage 2).
+
+\subsubsection{Stage 1: Deterministischer Metadatenfilter}
+
+Baut einen Qdrant-Filter aus den CAD-Metadaten des Bauteils:
+
+\begin{lstlisting}[style=pythonstyle, caption={Stage-1-Filter-Aufbau}]
+def _build_stage1_filter(schema, cad, *, relax_factor=1.0) -> dict:
+    must = []
+    for field in schema.filter_fields:
+        if field.filter_type == "exact":
+            # z.B.: Verzahnungstyp des Bauteils muss dem Chunk-Typ entsprechen
+            must.append({"key": f"metadata.{field.name}",
+                         "match": cad.get(field.name), "or_empty": True})
+        elif field.filter_type == "range":
+            # z.B.: Bauteil-Modul muss im Modul-Bereich des Chunks liegen
+            # relax_factor erweitert den Bereich bei zu wenig Treffern
+            hi = float(cad_value) * relax_factor
+            lo = float(cad_value) / relax_factor
+            must.append({"key": f"metadata.{min_key}", "range": {"lte": hi}, "or_empty": True})
+            must.append({"key": f"metadata.{max_key}", "range": {"gte": lo}, "or_empty": True})
+    return {"must": must}
+\end{lstlisting}
+
+\subsubsection{Stage 2: Embedding-Vektorsuche + Relax-Logik}
+
+\begin{lstlisting}[style=pythonstyle, caption={Zweistufiger Retrieval-Ablauf}]
+def retrieve(self, question: str, cad_metadata: dict) -> list[RetrievedChunk]:
+    # Frage einbetten
+    qvec = self.embedder.embed([question]).dense_vectors[0]
+
+    # Stage 1: Qdrant-Suche mit Metadatenfilter
+    filter0 = _build_stage1_filter(self.schema, cad_metadata, relax_factor=1.0)
+    hits = self.store.search(qvec, filter=filter0,
+                             top_k=self.top_k, threshold=self.min_similarity)
+
+    # Relax-Logik: zu wenige Treffer -> Filter lockern
+    if self.stage1_relax_on_empty and len(hits) < self.stage1_min_candidates:
+        for factor in (1.5, 2.0):
+            hits = self.store.search(qvec,
+                filter=_build_stage1_filter(self.schema, cad_metadata, relax_factor=factor),
+                top_k=self.top_k, threshold=self.min_similarity)
+            if hits:
+                break
+
+    return [RetrievedChunk(chunk=h.chunk, metadata=h.metadata, similarity=h.score)
+            for h in hits]
+\end{lstlisting}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=0.5cm and 1.5cm,
+  box/.style={rectangle, rounded corners, draw=accentblue, fill=boxbg,
+              text width=5.5cm, align=center, minimum height=0.9cm, font=\small},
+  dbox/.style={rectangle, rounded corners, draw=accentgray, fill=codebg,
+               text width=5.5cm, align=center, minimum height=0.9cm, font=\small},
+  arrow/.style={-{Stealth[length=2mm]}, thick, color=accentblue},
+]
+\node[box]  (q)     {1. Frage einbetten (bge-m3)};
+\node[box,  below=0.4cm of q]  (s1)    {2. Stage-1-Filter aufbauen (relax=1.0)};
+\node[box,  below=0.4cm of s1] (qdrant){3. Qdrant-Suche mit Filter};
+\node[dbox, below=0.4cm of qdrant] (check) {Treffer $\geq$ min\_candidates?};
+\node[box,  below=0.4cm of check]  (relax) {4a. Falls Nein: Filter lockern (1.5x, 2.0x)};
+\node[box,  below=0.4cm of relax]  (topk)  {4b. Top-k Chunks (Score $\geq$ 0.65)};
+\node[box,  below=0.4cm of topk]   (out)   {5. list[RetrievedChunk] ausgeben};
+
+\draw[arrow] (q)      -- (s1);
+\draw[arrow] (s1)     -- (qdrant);
+\draw[arrow] (qdrant) -- (check);
+\draw[arrow] (check)  -- (relax);
+\draw[arrow] (relax)  -- (topk);
+\draw[arrow] (topk)   -- (out);
+\end{tikzpicture}
+\caption{Ablauf des zweistufigen Retrievers}
+\end{figure}
+
+% ------------------------------------------------------------
+\subsection{Antwortgenerator: \texttt{answer\_generator\_ollama.py}}
+% ------------------------------------------------------------
+
+\begin{lstlisting}[style=pythonstyle, caption={Prompt-Aufbau und LLM-Aufruf}]
+def generate(self, *, question, chunks, cad_metadata, output_format) -> Answer:
+    # Chunk-Texte als nummerierte Quellenblock aufbauen
+    chunk_lines = []
+    sources = []
+    for idx, rc in enumerate(chunks, start=1):
+        qid = f"Q{idx}"
+        chunk_lines.append(f"[{qid}] Quelle: {Path(rc.chunk.source_path).name},
+                             Seite {rc.chunk.page_number}")
+        chunk_lines.append(rc.chunk.text.strip())
+        chunk_lines.append("---")
+        sources.append({"qid": qid, "source_path": ..., "similarity": ...})
+
+    # Prompt-Template aus Datei befuellen
+    prompt = self.prompt_template.format(
+        DOMAIN=self.domain_name,
+        CAD_METADATA_JSON=stable_json_dumps(cad_metadata),
+        CHUNKS_BLOCK="\n".join(chunk_lines),
+        QUESTION=question,
+        FORMAT_INSTRUCTION=_FORMAT_INSTRUCTIONS[fmt],
+    )
+
+    answer_text = self.client.generate(model=self.model_name, prompt=prompt, ...)
+    return {"question": question, "answer_text": answer_text, "sources": sources}
+\end{lstlisting}
+
+\subsubsection{Prompt-Template (\texttt{prompts/answer\_system\_prompt.txt})}
+
+Das Prompt-Template erzwingt striktes RAG -- das LLM darf nur die übergebenen
+Chunks und Bauteildaten als Quellen verwenden:
+
+\begin{lstlisting}[style=yamlstyle, caption={System-Prompt-Struktur}]
+Du bist ein technischer Assistent fuer die Domaene {DOMAIN}.
+
+REGELN:
+1. Antworte AUSSCHLIESSLICH auf Basis der Wissensauszuege und Bauteildaten.
+2. Verwende KEIN externes Vorwissen.
+3. Wenn Information fehlt: Sage das explizit.
+4. Haenge JEDE inhaltliche Aussage eine Quellenmarkierung [Q1], [Q2]... an.
+
+BAUTEILDATEN: {CAD_METADATA_JSON}
+WISSENSAUSZUEGE: {CHUNKS_BLOCK}
+FRAGE: {QUESTION}
+AUSGABEFORMAT: {FORMAT_INSTRUCTION}
+
+ANTWORT:
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lp{9cm}}
+\toprule
+\textbf{Format} & \textbf{Anweisung an das LLM} \\
+\midrule
+\texttt{kurz} & Fließtext, prägnant, max. 100 Wörter \\
+\texttt{standard} & Strukturiert mit Zwischenüberschriften, ca. 200 Wörter \\
+\texttt{ausführlich} & Mit Zwischenüberschriften, ca. 400 Wörter \\
+\texttt{stichpunkte} & Stichpunktliste, max. 7 Punkte \\
+\texttt{tabellarisch} & Tabellarisch, wenn Vergleichsdaten gefragt sind \\
+\bottomrule
+\end{tabular}
+\caption{Ausgabeformate und ihre Prompt-Anweisungen}
+\end{table}
+
+% ------------------------------------------------------------
+\subsection{Ollama-HTTP-Client: \texttt{ollama\_client.py}}
+% ------------------------------------------------------------
+
+\begin{lstlisting}[style=pythonstyle, caption={HTTP-Client fuer Ollama}]
+class OllamaClient:
+    def generate(self, *, model, prompt, temperature=None, max_tokens=None) -> str:
+        payload = {"model": model, "prompt": prompt, "stream": False}
+        if temperature is not None: payload["temperature"] = temperature
+        if max_tokens is not None:  payload["num_predict"] = max_tokens
+
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.post(f"{self.base_url}/api/generate", json=payload)
+            r.raise_for_status()
+            return str(r.json().get("response", "")).strip()
+
+    def generate_json(self, ...) -> Any:
+        text = self.generate(...)
+        try:
+            return json.loads(text)
+        except Exception:
+            # Fallback: JSON-Objekt aus umgebendem Text extrahieren
+            start, end = text.find("{"), text.rfind("}")
+            if start != -1 and end > start:
+                return json.loads(text[start:end+1])
+            raise
+\end{lstlisting}
+
+\texttt{generate\_json} wird für die Metadatenextraktion verwendet: Es versucht,
+ein JSON-Objekt aus der LLM-Ausgabe zu parsen, auch wenn das Modell die Antwort
+in Prosa einbettet.
+
+\newpage
+% ============================================================
+\section{API-Schicht: \texttt{app/api/main.py}}
+% ============================================================
+
+FastAPI-Server mit vier Endpunkten. Die App wird durch die Factory-Funktion
+\texttt{create\_app()} aufgebaut.
+
+\begin{lstlisting}[style=pythonstyle, caption={API-Endpunkte (Uebersicht)}]
+@app.get("/")             # Liefert das Frontend (index.html)
+@app.post("/upload")      # PDF hochladen und indizieren
+@app.get("/documents")    # Liste aller indizierten Dokumente
+@app.delete("/documents/{doc_hash}")  # Dokument entfernen
+@app.get("/cad/random")   # Zufaelliges Zahnrad generieren
+@app.post("/ask")         # Fragen stellen und Antworten erhalten
+\end{lstlisting}
+
+\subsection{Request/Response-Modelle}
+
+\begin{lstlisting}[style=pythonstyle, caption={Pydantic-Modelle fuer /ask}]
+class AskRequest(BaseModel):
+    questions: list[str] = Field(min_length=1)  # mind. 1 Frage
+    cad_metadata: dict[str, Any] = Field(default_factory=dict)
+    format: Optional[OutputFormat] = None       # kurz/standard/...
+
+class AskResponse(BaseModel):
+    cad_metadata: dict[str, Any]
+    answers: list[Answer]
+\end{lstlisting}
+
+\subsection{Parallele Frageverarbeitung}
+
+\begin{lstlisting}[style=pythonstyle, caption={Parallele Anfrageverarbeitung mit asyncio}]
+@app.post("/ask", response_model=AskResponse)
+async def ask(req: AskRequest):
+    questions = [q.strip() for q in req.questions if q.strip()]
+    fmt = req.format or config.answer_generator.default_format
+    cad = req.cad_metadata or {}
+
+    # Alle Fragen PARALLEL verarbeiten (jede eigene Pipeline)
+    tasks = [_answer_one(q, cad, fmt) for q in questions]
+    try:
+        answers = await asyncio.gather(*tasks)
+    except Exception as e:
+        logger.exception("ask_failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Anfrage-Log schreiben
+    (logs_dir / f"{ts}_{qid}.json").write_text(stable_json_dumps({...}))
+    return AskResponse(cad_metadata=cad, answers=list(answers))
+\end{lstlisting}
+
+\begin{infobox}[\texttt{asyncio.gather} -- Parallele Verarbeitung]
+Jede Frage durchläuft vollständig isoliert: eigener Retrieve-Aufruf, eigener
+LLM-Aufruf. \texttt{asyncio.gather} startet alle Coroutinen gleichzeitig und
+wartet bis alle abgeschlossen sind. Bei $n$ Fragen beträgt die Gesamtdauer
+annähernd die Zeit einer einzigen Frage (statt $n \times$).
+\end{infobox}
+
+\subsection{Upload-Endpunkt}
+
+\begin{lstlisting}[style=pythonstyle, caption={PDF-Upload und Indizierung}]
+@app.post("/upload")
+async def upload_pdf(file: UploadFile = File(...)):
+    # In temporaere Datei speichern
+    dest = uploads_dir / f"{timestamp}_{uuid}.pdf"
+    dest.write_bytes(await file.read())
+
+    # Indizierung in separatem Thread (blockierender CPU-Code)
+    try:
+        info = await asyncio.to_thread(indexer.index_pdf, dest)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Indexing failed: {e}")
+
+    return info   # DocumentInfo: source_path, doc_hash, chunk_count
+\end{lstlisting}
+
+\texttt{asyncio.to\_thread} lagert den blockierenden Indizierungs-Code in einen
+Thread-Pool aus, damit der Event-Loop für andere Anfragen frei bleibt.
+
+\newpage
+% ============================================================
+\section{Frontend: \texttt{frontend/index.html}}
+% ============================================================
+
+Das gesamte Frontend ist eine einzige HTML-Datei ohne Build-Prozess.
+Es verwendet Pico.css (klassenfreies CSS-Framework) und Vanilla JavaScript.
+
+\subsection{Zustandsmodell}
+
+\begin{lstlisting}[style=pythonstyle, caption={JavaScript-Zustandsmodell}]
+const state = {
+  cad: {},      // Aktuelle CAD-Metadaten (Objekt)
+  maxQ: 6,      // Maximale Anzahl Fragefelder
+  defaultQ: 3,  // Standard-Anzahl beim Start
+};
+\end{lstlisting}
+
+\subsection{Fehlerbehandlung}
+
+\begin{lstlisting}[style=pythonstyle, caption={Fehlerdarstellung (JavaScript)}]
+function formatError(payload, fallback) {
+  if (!payload) return fallback;
+  const d = payload.detail ?? payload;  // FastAPI-Fehler haben "detail"-Feld
+  if (typeof d === "string") return d;
+  try { return JSON.stringify(d, null, 2); }
+  catch (_) { return String(d); }
+}
+\end{lstlisting}
+
+\subsection{Fragen-API-Aufruf}
+
+\begin{lstlisting}[style=pythonstyle, caption={Frontend-Aufruf der /ask-API}]
+el("ask").onclick = async () => {
+  const questions = getQuestions();         // Alle nichtleeren Felder sammeln
+  el("askStatus").textContent = "Laeuft...";
+
+  const r = await fetch("/ask", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      questions,
+      cad_metadata: state.cad,
+      format: el("format").value
+    })
+  });
+
+  const j = await r.json().catch(() => null);
+  el("askStatus").textContent = r.ok ? "Fertig." : `Error: ${formatError(j, "...")}`;
+  if (r.ok) renderOutput(j);
+};
+\end{lstlisting}
+
+\newpage
+% ============================================================
+\section{Konfigurationsdatei: \texttt{config.yaml}}
+% ============================================================
+
+\begin{lstlisting}[style=yamlstyle, caption={Aktuelle Konfiguration (config.yaml)}]
+domain:
+  name: "Verzahnungen"
+  schema_path: "schemas/gears.yaml"
+  prompt_path: "prompts/answer_system_prompt.txt"
+
+embedder:
+  implementation: "bge_m3"
+  model_name: "BAAI/bge-m3"
+  device: "mps"            # Apple Silicon GPU
+  use_sparse: false
+  max_length: 8192
+
+chunker:
+  implementation: "recursive"
+  min_chunk_size: 100      # Token-Untergrenze
+  max_chunk_size: 512      # Token-Obergrenze
+  overlap_sentences: 1     # Satz-Ueberlappung zwischen Chunks
+
+metadata_extractor:
+  model_name: "llama3.2:3b"
+  ollama_url: "http://localhost:11434"
+  max_retries: 2
+  timeout_s: 30
+
+vector_store:
+  implementation: "qdrant"
+  host: "localhost"
+  port: 6333
+  collection_name: "knowledge_base"
+
+retriever:
+  stage1_strict: true
+  stage1_relax_on_empty: true  # Lockert Filter, wenn < 5 Treffer
+  stage1_min_candidates: 5
+  stage2_top_k: 5
+  stage2_min_similarity: 0.65  # Mindest-Kosinusaehnlichkeit
+
+answer_generator:
+  model_name: "llama3.2:3b"
+  default_format: "standard"
+  max_tokens: 800
+  temperature: 0.2             # Niedrig = deterministisch
+\end{lstlisting}
+
+% ============================================================
+\section{Domänenschema: \texttt{schemas/gears.yaml}}
+% ============================================================
+
+Das Schema ist vollständig extern konfigurierbar. Ein Wechsel der Domäne
+(z.\,B. Lager, Schweißverbindungen) erfordert nur eine neue YAML-Datei
+und eine Pfadanpassung in \texttt{config.yaml}.
+
+\begin{lstlisting}[style=yamlstyle, caption={Metadatenschema Verzahnungen}]
+domain: "Verzahnungen"
+
+fields:
+  - name: verzahnungstyp
+    type: string
+    enum: ["Stirnrad", "Schraegverzahnung", "Kegelrad", ...]
+    filter_type: exact       # Exakter Vergleich in Stage-1-Filter
+
+  - name: modul
+    type: number
+    filter_type: range       # Bereichsvergleich
+    range_fields: [modul_min, modul_max]
+
+  - name: norm
+    type: string
+    filter_type: exact
+    nullable: true           # Darf null sein
+
+  - name: themenkategorie
+    type: string
+    enum: ["Geometrie", "Festigkeit", "Fertigung", ...]
+    filter_type: set         # Mengenabgleich
+
+  - name: anwendungsbereich
+    type: string
+    nullable: true
+    # kein filter_type -> wird nicht im Stage-1-Filter verwendet
+\end{lstlisting}
+
+\newpage
+% ============================================================
+\section{Vollständiger Anfragepfad (Beispiel)}
+% ============================================================
+
+\begin{enumerate}[leftmargin=1.5cm, label=\textbf{Schritt \arabic*.}]
+  \item \textbf{Frontend}: Nutzer stellt 2 Fragen, klickt ``Fragen stellen''
+  \item \textbf{POST /ask}: Body mit \texttt{questions}, \texttt{cad\_metadata}, \texttt{format}
+  \item \textbf{API}: Validierung durch Pydantic (\texttt{AskRequest})
+  \item \textbf{asyncio.gather}: 2 parallele \texttt{\_answer\_one}-Coroutinen starten
+  \item \textbf{Für jede Frage}:
+    \begin{enumerate}[label=\alph*)]
+      \item \texttt{retriever.retrieve(question, cad\_metadata)}
+      \item Embedder: Frage → Dense-Vektor ($\mathbb{R}^{1024}$)
+      \item Stage-1-Filter: CAD-Metadaten → Qdrant-Filter-Objekt
+      \item Qdrant: \texttt{query\_points} mit Filter + Score-Threshold 0.65
+      \item Falls $< 5$ Treffer: Filter mit Faktor 1.5, dann 2.0 lockern
+      \item \texttt{answer\_generator.generate(question, chunks, cad, format)}
+      \item Prompt-Template befüllen (DOMAIN, CAD, CHUNKS, QUESTION, FORMAT)
+      \item Ollama: HTTP POST an \texttt{/api/generate} → LLM-Antworttext
+      \item \texttt{Answer}-Dict zurückgeben (question, answer\_text, sources)
+    \end{enumerate}
+  \item \textbf{Logging}: Anfrage-Log in \texttt{logs/queries/\{ts\}\_\{uuid\}.json}
+  \item \textbf{Response}: \texttt{AskResponse} mit \texttt{cad\_metadata} + \texttt{answers}
+  \item \textbf{Frontend}: Antwort-Karten rendern mit Quellen-Akkordeon
+\end{enumerate}
+
+% ============================================================
+\section{Erweiterungspunkte}
+% ============================================================
+
+Das System ist an definierten Punkten ohne Code-Eingriff erweiterbar:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{lXl}
+\toprule
+\textbf{Erweiterung} & \textbf{Was zu tun ist} & \textbf{Aufwand} \\
+\midrule
+Neues Embedding-Modell & Neue Klasse mit \texttt{embed()}-Methode, Eintrag in \texttt{factory.py} & klein \\
+Neues LLM & Neuer Client (z.\,B. OpenAI), Klasse mit \texttt{generate()} & klein \\
+Neue Domäne & Neue \texttt{schemas/<domain>.yaml} + Config-Pfad ändern & minimal \\
+Echter CAD-Adapter & Klasse mit \texttt{extract(file\_path)} -> dict & mittel \\
+Reranker & 3. Stufe im Retriever (per Config aktivierbar) & mittel \\
+Hybrid-Search & Sparse-Vektoren in Qdrant (bereits vorbereitet) & mittel \\
+Multi-User & Auth-Middleware in FastAPI + User-Isolation in Qdrant & groß \\
+\bottomrule
+\end{tabularx}
+\caption{Erweiterungspunkte und geschätzter Aufwand}
+\end{table}
+
+% ============================================================
+\section{Abhängigkeiten}
+% ============================================================
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Bibliothek} & \textbf{Version} & \textbf{Verwendung} \\
+\midrule
+\texttt{fastapi} & -- & REST-API-Framework \\
+\texttt{uvicorn} & -- & ASGI-Server \\
+\texttt{pydantic} & v2 & Konfiguration, Datenvalidierung \\
+\texttt{sentence-transformers} & -- & BAAI/bge-m3 Embedding \\
+\texttt{qdrant-client} & 1.16+ & Vektordatenbank-Client \\
+\texttt{PyMuPDF (fitz)} & -- & PDF-Textextraktion \\
+\texttt{httpx} & -- & HTTP-Client für Ollama \\
+\texttt{pyyaml} & -- & YAML-Konfiguration und Schema \\
+\bottomrule
+\end{tabularx}
+\caption{Python-Abhängigkeiten}
+\end{table}
+
+Externe Dienste (müssen separat laufen):
+\begin{itemize}
+  \item \textbf{Qdrant}: Docker \texttt{docker-compose up} (Port 6333)
+  \item \textbf{Ollama}: \texttt{ollama serve} + \texttt{ollama pull llama3.2:3b} (Port 11434)
+\end{itemize}
+
+\vfill
+\begin{center}
+  \small\color{accentgray}
+  Automatisch generiert aus dem Quellcode des KI-Copiloten für Verzahnungswissen.
+\end{center}
+
+\end{document}
