@@ -9,6 +9,7 @@ embedder:
   device: "mps" # "cuda" | "cpu" | "mps"
   use_sparse: true
   max_length: 8192
+  batch_size: 4
 
 chunker:
   implementation: "semantic"

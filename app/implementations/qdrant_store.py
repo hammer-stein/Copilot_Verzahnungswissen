@@ -8,6 +8,7 @@ und Metadaten-Filtersuche. Punkt-IDs sind deterministisch aus (doc_hash, positio
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Optional
 
 from qdrant_client import QdrantClient
@@ -55,6 +56,19 @@ class QdrantStore:
         self.client.create_payload_index(
             collection_name=self.collection_name, field_name="source_path", field_schema=PayloadSchemaType.KEYWORD,
         )
+        for field_name, field_schema in [
+            ("metadata.verzahnungstyp", PayloadSchemaType.KEYWORD),
+            ("metadata.modul_min", PayloadSchemaType.FLOAT),
+            ("metadata.modul_max", PayloadSchemaType.FLOAT),
+        ]:
+            try:
+                self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field_name,
+                    field_schema=field_schema,
+                )
+            except Exception:
+                pass
 
     def upsert(self, chunks: list[EmbeddedChunk]) -> None:
         """
@@ -77,9 +91,11 @@ class QdrantStore:
                 "position": c.position,
                 "doc_hash": c.doc_hash,
                 "metadata": ec.metadata or {},
+                "sparse_vector": ec.sparse_vector or {},
             }
-            # Stabiler Integer-ID: abs() weil Qdrant positive IDs erwartet
-            pid = abs(hash((c.doc_hash, c.position))) % (2**63)
+            # Stabiler Integer-ID über Prozesse hinweg.
+            digest = hashlib.sha256(f"{c.doc_hash}:{c.position}".encode("utf-8")).digest()
+            pid = int.from_bytes(digest[:8], "big") % (2**63)
             points.append(PointStruct(id=pid, vector=ec.dense_vector, payload=payload))
 
         self.client.upsert(collection_name=self.collection_name, points=points)
@@ -91,10 +107,15 @@ class QdrantStore:
         filter: dict,
         top_k: int,
         threshold: float,
+        query_sparse_vector: Optional[dict[str, float]] = None,
+        use_hybrid: bool = False,
+        hybrid_dense_weight: float = 0.7,
+        hybrid_sparse_weight: float = 0.3,
     ) -> list[SearchResult]:
         """
         Führt eine kombinierte Vektor- und Metadaten-Filtersuche aus.
         query_points() ist die aktuelle API (Qdrant >= 1.10, ersetzt das veraltete search()).
+        Hybrid-Search nutzt Qdrant für dichte Kandidaten und rerankt diese lokal mit Sparse-Scores.
         """
         qfilter = _dict_filter_to_qdrant(filter)
 
@@ -110,16 +131,25 @@ class QdrantStore:
         out: list[SearchResult] = []
         for h in response.points:  # response.points: Liste von ScoredPoint
             p = h.payload or {}
+            dense_score = float(h.score) if h.score is not None else 0.0
+            sparse_score = None
+            final_score = dense_score
+            if use_hybrid and query_sparse_vector:
+                sparse_score = _sparse_dot(query_sparse_vector, p.get("sparse_vector") or {})
+                final_score = (
+                    float(hybrid_dense_weight) * dense_score
+                    + float(hybrid_sparse_weight) * sparse_score
+                )
             out.append(
                 SearchResult(
                     chunk=_payload_to_chunk(p),
                     metadata=(p.get("metadata") or {}),
-                    dense_score=float(h.score) if h.score is not None else None,
-                    sparse_score=None,
-                    score=float(h.score) if h.score is not None else 0.0,
+                    dense_score=dense_score,
+                    sparse_score=sparse_score,
+                    score=final_score,
                 )
             )
-        return out
+        return sorted(out, key=lambda r: r.score, reverse=True)
 
     def delete_by_doc_hash(self, doc_hash: str) -> None:
         """Löscht alle Chunks eines Dokuments anhand des doc_hash (Mechanismus für DELETE /documents/{doc_hash})."""
@@ -209,3 +239,18 @@ def _dict_filter_to_qdrant(filter_dict: dict) -> Optional[Filter]:
             must_conditions.append(c)
 
     return Filter(must=must_conditions or None)
+
+
+def _sparse_dot(a: dict[str, float], b: dict[str, Any]) -> float:
+    """Skalarprodukt zweier bereits normalisierter lexikalischer Sparse-Vektoren."""
+    if not a or not b:
+        return 0.0
+    if len(a) > len(b):
+        a, b = b, a
+    score = 0.0
+    for key, val in a.items():
+        try:
+            score += float(val) * float(b.get(key, 0.0))
+        except Exception:
+            continue
+    return score

@@ -74,6 +74,7 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
             device=config.embedder.device,
             max_length=config.embedder.max_length,
             use_sparse=config.embedder.use_sparse,
+            batch_size=config.embedder.batch_size,
         )
     else:
         raise ValueError(f"Unknown embedder implementation: {config.embedder.implementation}")
@@ -134,6 +135,11 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
         stage1_min_candidates=config.retriever.stage1_min_candidates,
         top_k=config.retriever.stage2_top_k,
         min_similarity=config.retriever.stage2_min_similarity,
+        stage2_use_hybrid=config.retriever.stage2_use_hybrid,
+        hybrid_dense_weight=config.retriever.hybrid_dense_weight,
+        hybrid_sparse_weight=config.retriever.hybrid_sparse_weight,
+        reranker_enabled=config.retriever.reranker_enabled,
+        reranker_model=config.retriever.reranker_model,
     )
 
     # 8. Antwortgenerator – HTTP-Verbindung zu Ollama (kann anderes Modell als Extraktor)

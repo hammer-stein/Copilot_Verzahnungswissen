@@ -63,6 +63,10 @@ class VectorStore(Protocol):
         filter: dict,      # Metadatenfilter im internen Dict-Format
         top_k: int,
         threshold: float,
+        query_sparse_vector: Optional[dict] = None,
+        use_hybrid: bool = False,
+        hybrid_dense_weight: float = 0.7,
+        hybrid_sparse_weight: float = 0.3,
     ) -> list[SearchResult]: ...
 
     def delete_by_doc_hash(self, doc_hash: str) -> None: ...

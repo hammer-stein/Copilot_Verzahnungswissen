@@ -71,12 +71,14 @@ class KnowledgeBaseIndexer:
             meta_list.append(_sanitize_metadata(self.schema, raw_meta))
 
         logger.info("embedding_chunks doc_hash=%s count=%d", doc.doc_hash, len(chunks))
-        vectors = self.embedder.embed([c.text for c in chunks]).dense_vectors  # ein Batch für alle Chunks
+        embedding_result = self.embedder.embed([c.text for c in chunks])  # ein Batch für alle Chunks
+        vectors = embedding_result.dense_vectors
+        sparse_vectors = embedding_result.sparse_vectors or [None] * len(chunks)
 
         # Chunks, Vektoren und Metadaten zu EmbeddedChunks zusammenführen
         embedded: list[EmbeddedChunk] = []
-        for c, v, m in zip(chunks, vectors, meta_list):
-            embedded.append(EmbeddedChunk(chunk=c, dense_vector=v, sparse_vector=None, metadata=m))
+        for c, v, sv, m in zip(chunks, vectors, sparse_vectors, meta_list):
+            embedded.append(EmbeddedChunk(chunk=c, dense_vector=v, sparse_vector=sv, metadata=m))
 
         logger.info("upserting_chunks doc_hash=%s count=%d", doc.doc_hash, len(embedded))
         self.store.upsert(embedded)

@@ -32,6 +32,7 @@ class EmbedderConfig(BaseModel):
     device: Literal["cuda", "cpu", "mps"] = "cpu"
     use_sparse: bool = True
     max_length: int = 8192
+    batch_size: int = Field(default=4, ge=1)
 
 
 class ChunkerConfig(BaseModel):
