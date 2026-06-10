@@ -1,0 +1,487 @@
+"""
+step_parser.py
+--------------
+Schritt 1: STEP-Datei einlesen und Rohdaten extrahieren.
+
+Extrahiert ausschließlich was direkt aus der STEP-Geometrie
+lesbar ist. Die Interpretation (Zahnzahl, Modul etc.) macht
+geometry_analyzer.py in Schritt 2.
+
+Verwendung:
+    python src/step_parser.py --input data/examples/zahnrad.stp
+    python src/step_parser.py --input data/examples/zahnrad.stp --output output/result.json
+"""
+
+import argparse
+import os
+import sys
+
+# pythonocc
+from OCC.Core.STEPControl import STEPControl_Reader
+from OCC.Core.IFSelect import IFSelect_RetDone
+from OCC.Core.BRepBndLib import brepbndlib
+from OCC.Core.Bnd import Bnd_Box
+from OCC.Core.BRepGProp import brepgprop
+from OCC.Core.GProp import GProp_GProps
+from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_REVERSED, TopAbs_FORWARD, TopAbs_SOLID
+from OCC.Core.TopExp import TopExp_Explorer
+from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
+from OCC.Core.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane, GeomAbs_Cone, GeomAbs_Torus
+from OCC.Core.GeomLProp import GeomLProp_CurveTool
+import math
+
+# Eigene Module
+sys.path.insert(0, os.path.dirname(__file__))
+from output_schema import GearParameters
+from geometry_analyzer import analyze_gear_geometry
+
+
+# ─────────────────────────────────────────────
+# STEP Datei laden
+# ─────────────────────────────────────────────
+
+def load_step(filepath: str):
+    """Lädt eine STEP-Datei und gibt die OCC Shape zurück."""
+    if not os.path.exists(filepath):
+        print(f"[FEHLER] Datei nicht gefunden: {filepath}")
+        return None
+
+    reader = STEPControl_Reader()
+    status = reader.ReadFile(filepath)
+
+    if status != IFSelect_RetDone:
+        print("[FEHLER] STEP-Datei konnte nicht gelesen werden.")
+        return None
+
+    reader.TransferRoots()
+    shape = reader.OneShape()
+    print(f"  -> Geladen: {filepath}")
+    return shape
+
+
+# ─────────────────────────────────────────────
+# PRIO 1: Bounding Box
+# ─────────────────────────────────────────────
+
+def get_bounding_box(shape):
+    """
+    Berechnet Bounding Box.
+    Gibt (x_mm, y_mm, z_mm) zurück.
+    Annahme: Rotationsachse des Zahnrads = Z-Achse.
+    """
+    bbox = Bnd_Box()
+    brepbndlib.Add(shape, bbox)
+    xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+    return (
+        round(xmax - xmin, 4),
+        round(ymax - ymin, 4),
+        round(zmax - zmin, 4)
+    )
+
+
+# ─────────────────────────────────────────────
+# PRIO 1: Volumen & Oberfläche
+# ─────────────────────────────────────────────
+
+def get_mass_properties(shape):
+    """Berechnet Volumen (mm³) und Oberfläche (mm²)."""
+    vol_props = GProp_GProps()
+    brepgprop.VolumeProperties(shape, vol_props)
+    volume = round(vol_props.Mass(), 3)
+
+    surf_props = GProp_GProps()
+    brepgprop.SurfaceProperties(shape, surf_props)
+    surface = round(surf_props.Mass(), 3)
+
+    return volume, surface
+# ─────────────────────────────────────────────
+# PRIO 2: Baugruppen-Struktur erkennen
+# ─────────────────────────────────────────────
+
+def detect_assembly_structure(shape) -> str:
+    """Prüft, ob die Shape ein Einzelteil oder eine Baugruppe ist."""
+    solids = []
+    explorer = TopExp_Explorer(shape, TopAbs_SOLID)
+    while explorer.More():
+        solids.append(explorer.Current())
+        explorer.Next()
+
+    if len(solids) <= 1:
+        return "standalone"
+    
+    print(f"    [Baugruppe erkannt] {len(solids)} Einzelteile gefunden.")
+    if len(solids) >= 3: 
+        return "assembly_detected"
+    return "complex_assembly"
+
+# ─────────────────────────────────────────────
+# PRIO 1 & 2: Flächen-Analyse
+# ─────────────────────────────────────────────
+
+def analyze_surfaces(shape):
+    """
+    Iteriert über alle Faces und klassifiziert Oberflächen.
+
+    Gibt zurück:
+        cylinders      : Liste von (radius_mm, is_inner)
+        planes         : Anzahl ebener Flächen
+        cones          : Liste von (semi_angle_rad, is_inner)
+        tori           : Liste von Torus-Minor-Radien (r_f-Kandidaten)
+        total_faces    : Gesamtzahl Faces
+        plane_z_coords : Z-Koordinaten der ebenen Flächen (für Flanschdetektion)
+    """
+    cylinders = []
+    planes = 0
+    cones = []
+    tori = []
+    total_faces = 0
+    plane_z_coords = []
+
+    explorer = TopExp_Explorer(shape, TopAbs_FACE)
+    while explorer.More():
+        face = explorer.Current()
+        total_faces += 1
+        try:
+            surf = BRepAdaptor_Surface(face)
+            stype = surf.GetType()
+            is_inner = (face.Orientation() == TopAbs_REVERSED)
+
+            if stype == GeomAbs_Cylinder:
+                radius = round(surf.Cylinder().Radius(), 4)
+                cylinders.append((radius, is_inner))
+
+            elif stype == GeomAbs_Plane:
+                planes += 1
+                # Z-Position der Ebene für Flanschdetektion
+                try:
+                    loc = surf.Plane().Location()
+                    plane_z_coords.append(round(loc.Z(), 3))
+                except Exception:
+                    pass
+
+            elif stype == GeomAbs_Cone:
+                semi_angle = round(surf.Cone().SemiAngle(), 6)   # Halbkegelwinkel in Rad
+                cones.append((semi_angle, is_inner))
+
+            elif stype == GeomAbs_Torus:
+                # Minor-Radius = Fußrundungsradius r_f
+                minor_r = round(surf.Torus().MinorRadius(), 4)
+                if minor_r > 0:
+                    tori.append(minor_r)
+
+        except Exception:
+            pass
+        explorer.Next()
+
+    return cylinders, planes, cones, tori, total_faces, plane_z_coords
+
+
+# ─────────────────────────────────────────────
+# PRIO 1: Zylinder-Hierarchie auswerten
+# ─────────────────────────────────────────────
+
+def extract_cylinder_hierarchy(cylinders):
+    """
+    Klassifiziert Zylinder nach Größe und Orientierung.
+
+    Gibt zurück:
+        outer_r  : Größter Außenzylinder-Radius → d_a / 2
+        root_r   : Mittlerer Innen-Radius → d_f / 2 (Zahnfuß-Zylinder)
+        bore_r   : Kleinster Innen-Radius → d_N / 2 (Nabenbohrung)
+    """
+    if not cylinders:
+        return None, None, None
+
+    outer_radii = sorted([r for r, inner in cylinders if not inner], reverse=True)
+    inner_radii = sorted([r for r, inner in cylinders if inner])
+
+    outer_r = outer_radii[0] if outer_radii else None
+
+    # Innen-Radien: Kleinster = Nabenbohrung, größter Innen-Radius nahe Zahnfuß
+    bore_r = inner_radii[0] if inner_radii else None
+    root_r = inner_radii[-1] if len(inner_radii) > 1 else None
+
+    # Wenn nur ein Innen-Zylinder: Unterscheidung schwierig
+    if len(inner_radii) == 1:
+        bore_r = inner_radii[0]
+        root_r = None
+
+    return outer_r, root_r, bore_r
+
+
+# ─────────────────────────────────────────────
+# PRIO 2: Kanten-Analyse
+# ─────────────────────────────────────────────
+def analyze_edges(shape):
+    """
+    Zählt Kanten und ihre Längen. Extrahiert zusätzlich Kantenwinkel
+    zur Z-Achse, um den Schrägungswinkel präzise bestimmen zu können.
+    """
+    total_edges = 0
+    edge_lengths = []
+    short_edges = 0
+    edge_angles_to_z = []
+
+    explorer = TopExp_Explorer(shape, TopAbs_EDGE)
+    while explorer.More():
+        edge = explorer.Current()
+        total_edges += 1
+        try:
+            props = GProp_GProps()
+            brepgprop.LinearProperties(edge, props)
+            length = round(props.Mass(), 4)
+            if length > 0:
+                edge_lengths.append(length)
+                if length < 5.0:
+                    short_edges += 1
+                
+                # NEU: Richtungsvektor der Kante für Schrägungswinkel auslesen
+                try:
+                    curve = BRepAdaptor_Curve(edge)
+                    u_min = curve.FirstParameter()
+                    u_max = curve.LastParameter()
+                    u_mid = (u_min + u_max) / 2.0
+                    
+                    vec = curve.DN(u_mid, 1)
+                    vec.Normalize()
+                    
+                    cos_angle = min(1.0, max(-1.0, abs(vec.Z()))) 
+                    angle_deg = math.degrees(math.acos(cos_angle))
+                    
+                    helix_angle_candidate = min(angle_deg, 90 - angle_deg)
+                    edge_angles_to_z.append(helix_angle_candidate)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        explorer.Next()
+
+    keyway_present = None
+    if total_edges > 0:
+        short_ratio = short_edges / total_edges
+        if short_ratio > 0.15 and short_edges >= 4:
+            keyway_present = True
+        elif total_edges > 20:
+            keyway_present = False
+
+    return total_edges, edge_lengths, keyway_present, edge_angles_to_z
+
+
+# ─────────────────────────────────────────────
+# PRIO 2: Flansch-Detektion
+# ─────────────────────────────────────────────
+
+def detect_flanges(plane_z_coords: list, face_width_mm: float) -> bool:
+    """
+    Erkennt Absätze / Flansche anhand der Z-Positionen der ebenen Flächen.
+    Wenn mehr als 2 deutlich verschiedene Z-Ebenen existieren → Flansche.
+    """
+    if len(plane_z_coords) < 3:
+        return False
+
+    unique_z = sorted(set(round(z, 1) for z in plane_z_coords))
+    # Mehr als 2 Ebenen (Stirnflächen) bei normalem Zahnrad → Absatz/Flansch
+    return len(unique_z) > 2
+
+
+# ─────────────────────────────────────────────
+# PRIO 3: Metadaten aus STEP-Header
+# ─────────────────────────────────────────────
+
+def get_step_metadata(filepath: str) -> dict:
+    """
+    Liest den STEP-Datei-Header (reines Text-Parsing).
+    Gibt dict mit: part_name, part_number, created_by, material,
+                   tolerance_class, surface_roughness_ra zurück.
+    """
+    metadata = {
+        "part_name": None,
+        "part_number": None,
+        "created_by": None,
+        "material": None,
+        "tolerance_class": None,
+        "surface_roughness_ra": None,
+        "bore_fit": None,
+    }
+
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+            in_data_section = False
+            for line in f:
+                line = line.strip()
+
+                if line == "DATA;":
+                    in_data_section = True
+
+                if not in_data_section:
+                    # Header: FILE_DESCRIPTION und FILE_NAME
+                    if "FILE_DESCRIPTION" in line:
+                        parts = line.split("'")
+                        if len(parts) > 1 and parts[1]:
+                            metadata["part_name"] = parts[1]
+                    if "FILE_NAME" in line:
+                        parts = line.split("'")
+                        if len(parts) > 3:
+                            metadata["created_by"] = parts[3] or None
+                else:
+                    # Data-Bereich
+                    if "PRODUCT(" in line or "PRODUCT (" in line:
+                        parts = line.split("'")
+                        if len(parts) > 1 and parts[1] and not metadata["part_name"]:
+                            metadata["part_name"] = parts[1]
+                        if len(parts) > 3 and parts[3]:
+                            metadata["part_number"] = parts[3]
+
+                    if "MATERIAL_DESIGNATION" in line:
+                        parts = line.split("'")
+                        if len(parts) > 1 and parts[1]:
+                            metadata["material"] = parts[1]
+
+                    # PMI: Toleranzklasse (DIN/ISO Angaben)
+                    if "DIMENSIONAL_CHARACTERISTIC_REPRESENTATION" in line or \
+                       "TOLERANCE_VALUE" in line:
+                        if "DIN" in line or "ISO" in line:
+                            parts = line.split("'")
+                            for p in parts:
+                                if "DIN" in p or "ISO" in p:
+                                    metadata["tolerance_class"] = p.strip()
+                                    break
+
+                    # Passung (z.B. H7, k6)
+                    if "PLUS_MINUS_TOLERANCE" in line or "LIMITS_AND_FITS" in line:
+                        parts = line.split("'")
+                        for p in parts:
+                            p = p.strip()
+                            if len(p) >= 2 and p[0].isalpha() and p[1:].isdigit():
+                                metadata["bore_fit"] = p
+                                break
+
+                    # Oberflächenrauheit Ra
+                    if "SURFACE_ROUGHNESS" in line or "ROUGHNESS_PARAMETER" in line:
+                        import re
+                        numbers = re.findall(r'\d+\.?\d*', line)
+                        if numbers:
+                            try:
+                                metadata["surface_roughness_ra"] = float(numbers[0])
+                            except ValueError:
+                                pass
+
+    except Exception as e:
+        print(f"  [Warnung] Metadaten-Fehler: {e}")
+
+    return metadata
+
+
+# ─────────────────────────────────────────────
+# Hauptfunktion
+# ─────────────────────────────────────────────
+
+def parse_step_file(input_path: str, output_path: str) -> GearParameters:
+
+    print("\n" + "=" * 55)
+    print("STEP Parser — Gruppe B Geometrie-Modul")
+    print("=" * 55)
+
+    # Shape laden
+    print("\n[1/5] STEP-Datei laden...")
+    shape = load_step(input_path)
+    if shape is None:
+        sys.exit(1)
+
+    params = GearParameters(source_file=os.path.basename(input_path))
+    params.assembly_role = detect_assembly_structure(shape)
+
+    # PRIO 1: Bounding Box & Masse
+    print("[2/5] Bounding Box & Masse...")
+    x, y, z = get_bounding_box(shape)
+    params.bbox_x_mm, params.bbox_y_mm, params.bbox_z_mm = x, y, z
+    params.outer_diameter_mm = round(max(x, y), 4)
+    params.face_width_mm = round(z, 4)
+    params.total_width_mm = round(z, 4)   # wird ggf. in analyzer überschrieben
+    params.extraction_notes["outer_diameter"] = "max(bbox_x, bbox_y) — Annahme: Z = Rotationsachse"
+    print(f"    d_a = {params.outer_diameter_mm} mm  |  b = {params.face_width_mm} mm")
+
+    params.volume_mm3, params.surface_area_mm2 = get_mass_properties(shape)
+    print(f"    V   = {params.volume_mm3} mm³  |  A = {params.surface_area_mm2} mm²")
+
+    # PRIO 1+2: Flächen
+    print("[3/5] Flächen analysieren...")
+    cylinders, planes, cones, tori, total_faces, plane_z_coords = analyze_surfaces(shape)
+    print(f"    Faces: {total_faces}  |  Zylinder: {len(cylinders)}  |  "
+          f"Eben: {planes}  |  Kegel: {len(cones)}  |  Torus: {len(tori)}")
+
+    # Zylinder-Hierarchie: d_a, d_f, d_N direkt aus Geometrie
+    outer_r, root_r, bore_r = extract_cylinder_hierarchy(cylinders)
+    if outer_r is not None:
+        d_a_direct = round(outer_r * 2, 4)
+        # Plausibilitätsprüfung gegen Bounding-Box-Wert
+        if abs(d_a_direct - params.outer_diameter_mm) / max(params.outer_diameter_mm, 1) < 0.05:
+            params.outer_diameter_mm = d_a_direct
+            params.extraction_notes["outer_diameter"] = "Direkt aus größtem Außenzylinder"
+    if root_r is not None:
+        params.root_diameter_mm = round(root_r * 2, 4)
+        params.extraction_notes["root_diameter"] = "Direkt aus Geometrie (Zahnfuß-Zylinder)"
+    if bore_r is not None:
+        params.hub_bore_diameter_mm = round(bore_r * 2, 4)
+        params.extraction_notes["hub_bore"] = "Direkt aus kleinster Innenbohrung"
+    else:
+        params.warnings.append("Nabenbohrung nicht erkannt — ggf. Vollwelle oder kein Innen-Zylinder")
+
+    # Torus → Fußrundungsradius r_f
+    if tori:
+        # Typischster Wert: Median der Minor-Radien
+        tori_sorted = sorted(tori)
+        median_idx = len(tori_sorted) // 2
+        params.root_fillet_radius_mm = tori_sorted[median_idx]
+        params.extraction_notes["root_fillet"] = f"Median der {len(tori)} Torus-Minor-Radien"
+
+    # Flansche
+    params.has_flanges = detect_flanges(plane_z_coords, params.face_width_mm)
+
+    if not cylinders:
+        params.confidence = 0.2
+        params.warnings.append("Keine zylindrischen Flächen — möglicherweise kein Stirnrad")
+
+    # PRIO 2: Kanten
+    print("[4/5] Kanten analysieren...")
+    total_edges, edge_lengths, keyway_present, edge_angles_to_z = analyze_edges(shape)
+    params.keyway_present = keyway_present
+    print(f"    Kanten: {total_edges}  |  Passfedernut: {keyway_present}")
+
+    # PRIO 3: Metadaten
+    print("[5/5] Metadaten...")
+    metadata = get_step_metadata(input_path)
+    params.part_name = metadata["part_name"]
+    params.part_number = metadata["part_number"]
+    params.created_by = metadata["created_by"]
+    params.material = metadata["material"]
+    params.tolerance_class = metadata["tolerance_class"]
+    params.surface_roughness_ra = metadata["surface_roughness_ra"]
+    params.bore_fit = metadata["bore_fit"]
+    print(f"    Name: {params.part_name or 'n/a'}  |  Material: {params.material or 'n/a'}")
+
+    # Geometrie-Analyse (Schritt 2)
+    print("\n[Geometrie-Analyse]...")
+    params = analyze_gear_geometry(
+        params, cylinders, planes, cones, tori, total_edges, edge_lengths, edge_angles_to_z
+    )
+
+    params.summary()
+    params.to_json(output_path)
+
+    return params
+
+
+# ─────────────────────────────────────────────
+# CLI
+# ─────────────────────────────────────────────
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="STEP AP242 Parser für Verzahnungsgeometrien (Gruppe B)"
+    )
+    parser.add_argument("--input",  "-i", required=True, help="Pfad zur STEP-Datei")
+    parser.add_argument("--output", "-o", default="output/gear_parameters.json",
+                        help="JSON-Ausgabepfad (default: output/gear_parameters.json)")
+    args = parser.parse_args()
+    parse_step_file(args.input, args.output)

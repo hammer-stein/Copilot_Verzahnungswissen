@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# Tools
+.pytest_cache/
+.claude/
+
+# Output (generierte JSONs nicht ins Repo)
+output/
+
+# CAD Produktionsdaten (große Dateien nicht committen)
+data/
+# Test-Fixtures dürfen ins Repo
+!data/examples/
+!data/examples/*.stp
+!data/examples/*.step
