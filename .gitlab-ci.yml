@@ -1,0 +1,29 @@
+stages:
+  - test
+  - build
+
+# Unit-Tests ohne STEP-Datei (reine Python-Logik)
+unit-tests:
+  stage: test
+  image: continuumio/miniconda3:latest
+  before_script:
+    - conda env create -f environment.yml
+  script:
+    - conda run -n gear-copilot python -m pytest tests/ -v --tb=short
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+    expire_in: 1 week
+
+# Docker-Image bauen (nur auf main-Branch)
+build-image:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  only:
+    - main
+  script:
+    - docker build -t gear-copilot:$CI_COMMIT_SHORT_SHA .
+    - docker build -t gear-copilot:latest .

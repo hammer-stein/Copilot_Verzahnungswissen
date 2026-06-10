@@ -1,0 +1,11 @@
+name: gear-copilot
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pythonocc-core=7.8.1
+  - pytest
+  - fastapi
+  - uvicorn
+  - python-multipart
