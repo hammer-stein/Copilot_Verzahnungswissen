@@ -3,72 +3,111 @@
 Pipeline: **CAD-Datei → Parameter-JSON → RAG-Copilot → Antwort**
 
 ```
-cad_processor/   ← CAD-Datei einlesen, Zahnrad-Parameter extrahieren (PythonOCC)
-     ↓ JSON
-RAG-System       ← Wissensbasis (PDFs) + Bauteilparameter → Copilot-Antworten
+cad_processor (Port 8001)   ← STEP-Datei → GearParameters JSON (PythonOCC)
+        ↓ JSON (gemappte Metadaten)
+RAG-System    (Port 8000)   ← Wissensbasis (PDFs) + Bauteilparameter → Copilot-Antworten
+Qdrant        (Port 6333)   ← Vektordatenbank
 ```
 
 ---
 
-## Setup — CAD-Prozessor (Gruppe B)
+## Schnellstart (Docker Compose)
+
+```bash
+# 1. Ollama lokal starten + Modell laden (läuft außerhalb Docker)
+ollama pull llama3.2:3b
+
+# 2. Konfiguration anlegen
+cp config.example.yaml config.yaml
+
+# 3. Alle Services starten
+docker compose up --build
+```
+
+Frontend öffnen: `http://localhost:8000/`
+
+> **Hinweis:** Ollama läuft auf dem Host. Der `app`-Service erreicht ihn via `http://host.docker.internal:11434` (wird automatisch über `OLLAMA_URL` gesetzt).
+
+---
+
+## Lokale Entwicklung (ohne Docker)
+
+### CAD-Prozessor (Gruppe B)
 
 Benötigt **Miniconda** (wegen PythonOCC C++-Abhängigkeiten).
 
 ```bash
-# 1. conda-Umgebung erstellen (einmalig, ~5 min)
 conda env create -f cad_processor/environment.yml
-
-# 2. Umgebung aktivieren
 conda activate gear-copilot
-
-# 3. CAD-API starten
 cd cad_processor
 uvicorn src.main:app --reload --port 8001
 ```
 
 Vollständige Anleitung: [`cad_processor/SETUP_ANLEITUNG.md`](cad_processor/SETUP_ANLEITUNG.md)
 
----
-
-## Setup — RAG-System (Gruppe A)
-
-Benötigt **Docker** (für Qdrant) und **Ollama** (lokales LLM).
+### RAG-System (Gruppe A)
 
 ```bash
-# 1. Python-Umgebung erstellen (einmalig)
 python -m venv .venv
-source .venv/bin/activate       # Mac/Linux
-# .venv\Scripts\activate        # Windows
+source .venv/bin/activate        # Mac/Linux
 pip install -r requirements.txt
 
-# 2. Qdrant starten (Vektor-Datenbank)
-docker compose up -d
+# Qdrant starten
+docker compose up -d qdrant
 
-# 3. Ollama starten + Modell laden
+# Ollama starten
 ollama pull llama3.2:3b
 
-# 4. Konfiguration
-cp config.example.yaml config.yaml   # anpassen falls nötig
+# Konfiguration
+cp config.example.yaml config.yaml
 
-# 5. RAG-API starten
+# RAG-API starten
 uvicorn app.api.main:app --reload --port 8000
 ```
-
-Frontend öffnen: `http://localhost:8000/`
 
 ---
 
 ## API-Endpunkte
 
 ### CAD-Prozessor (Port 8001)
-- `POST /analyze` — STEP/IGES-Datei hochladen → JSON mit Zahnrad-Parametern
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `POST` | `/analyze` | STEP/STP-Datei → GearParameters JSON |
 
 ### RAG-System (Port 8000)
-- `POST /upload` — PDF hochladen und indexieren
-- `POST /ask` — `{ questions: string[], cad_metadata: object }` → Copilot-Antwort
-- `GET /documents` — indexierte Dokumente
-- `DELETE /documents/{doc_hash}` — Dokument löschen
-- `GET /cad/random` — zufälliges Zahnrad (Stub)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `POST` | `/cad/analyze` | STEP/STP-Datei → gemappte CAD-Metadaten (direkt für `/ask` verwendbar) |
+| `GET` | `/cad/random` | Zufälliges Zahnrad (Demo/Test, kein CAD-Service nötig) |
+| `POST` | `/upload` | PDF hochladen und indexieren |
+| `GET` | `/documents` | Indexierte Dokumente auflisten |
+| `DELETE` | `/documents/{doc_hash}` | Dokument löschen |
+| `POST` | `/ask` | `{ questions: string[], cad_metadata: object }` → Copilot-Antwort |
+
+### Typischer Ablauf
+
+```
+1. POST /cad/analyze   (STEP-Datei hochladen)
+        → { "verzahnungstyp": "Stirnrad", "modul": 2.5, ... }
+
+2. POST /ask           (Fragen + CAD-Metadaten)
+   Body: { "questions": ["Welche Toleranz gilt?"], "cad_metadata": { ... } }
+        → Antwort mit Quellenangaben
+```
+
+---
+
+## JSON-Bridge: cad_processor → RAG
+
+Der `CadProcessorClient` (`app/implementations/cad_processor_client.py`) mappt die englischen GearParameters-Felder des cad_processors auf die deutschen Feldnamen des RAG-Schemas (`schemas/gears.yaml`):
+
+| cad_processor | RAG-Schema | Funktion |
+|---|---|---|
+| `gear_type` | `verzahnungstyp` | Stage-1-Filter im Retriever |
+| `tooth_profile.module_mm` | `modul` | Stage-1-Filter (Range) |
+| `tooth_profile.num_teeth` | `zaehnezahl` | Kontext |
+| `basic_geometry.*` | `teilkreis-/kopf-/fusskreisdurchmesser`, `zahnbreite` | Kontext |
+| `material_context.material` | `werkstoff` | Kontext |
 
 ---
 
@@ -78,22 +117,31 @@ Frontend öffnen: `http://localhost:8000/`
 Copilot_Verzahnungswissen/
 ├── cad_processor/              ← CAD-Prozessor (Gruppe B)
 │   ├── src/
-│   │   ├── step_parser.py      STEP-Datei einlesen
-│   │   ├── geometry_analyzer.py Zahnrad-Parameter berechnen
-│   │   ├── output_schema.py    JSON-Schema
-│   │   └── main.py             FastAPI
-│   ├── environment.yml         conda-Umgebung (gear-copilot)
-│   └── SETUP_ANLEITUNG.md
+│   │   ├── step_parser.py      STEP-Datei einlesen + GearParameters extrahieren
+│   │   ├── output_schema.py    GearParameters Datenklasse
+│   │   └── main.py             FastAPI (Port 8001)
+│   ├── Dockerfile              conda/miniconda-basiertes Image
+│   └── environment.yml
 ├── app/                        ← RAG-System (Gruppe A)
-├── schemas/                    ← Gemeinsame JSON-Schemas
-├── frontend/
-├── requirements.txt            pip-Abhängigkeiten (RAG)
-├── docker-compose.yml          Qdrant
+│   ├── api/main.py             FastAPI (Port 8000)
+│   ├── core/                   Config, Factory, Interfaces
+│   ├── implementations/        Konkrete Implementierungen
+│   └── pipeline/               Indexierungs-Pipeline
+├── schemas/                    Metadaten-Schema (gears.yaml)
+├── frontend/                   Web-UI
+├── prompts/                    LLM-Prompt-Templates
+├── docs/                       Dokumentation
+├── Dockerfile                  Root-Dockerfile (RAG-System)
+├── docker-compose.yml          Alle drei Services
+├── requirements.txt
 └── config.example.yaml
 ```
 
+---
+
 ## Hinweise
 
-- Beide Services laufen lokal parallel (Port 8000 + 8001).
-- Es gibt keinen Konversationskontext zwischen Anfragen (Absicht).
-- Quellen sind pro Antwort als `[Q1]..` referenziert.
+- Kein Konversationskontext zwischen Anfragen (Absicht — jede Anfrage ist isoliert).
+- Quellen werden pro Antwort als `[Q1]..` referenziert.
+- `config.yaml` wird nie ins Git eingecheckt (enthält ggf. lokale Pfade/Ports).
+- Im Docker-Compose-Netz: Services kommunizieren über Container-Namen (`qdrant`, `cad_processor`).

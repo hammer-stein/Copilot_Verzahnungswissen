@@ -11,6 +11,7 @@ env/
 # Tools
 .pytest_cache/
 .claude/
+.vscode/
 
 # Output (generierte JSONs nicht ins Repo)
 output/

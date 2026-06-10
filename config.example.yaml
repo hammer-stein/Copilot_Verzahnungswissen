@@ -26,7 +26,9 @@ metadata_extractor:
   timeout_s: 30
 
 cad_adapter:
-  implementation: "random_gear_stub"
+  implementation: "cad_processor_http" # "cad_processor_http" (echter Service) | "random_gear_stub" (Demo ohne CAD-Service)
+  url: "http://localhost:8001"         # im Docker-Compose-Netz: http://cad_processor:8001
+  timeout_s: 120
 
 vector_store:
   implementation: "qdrant"

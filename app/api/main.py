@@ -140,6 +140,29 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         """Liefert zufällige CAD-Metadaten vom RandomGearGenerator (Demo/Test)."""
         return await asyncio.to_thread(components.cad_adapter.extract, None)
 
+    @app.post("/cad/analyze")
+    async def analyze_cad(file: UploadFile = File(...)):
+        """
+        Nimmt eine STEP-Datei entgegen, leitet sie an den CAD-Adapter weiter
+        (CadProcessorClient → cad_processor-Service) und gibt die gemappten
+        CAD-Metadaten zurück – direkt als cad_metadata für /ask verwendbar.
+        """
+        suffix = Path(file.filename).suffix.lower()
+        if suffix not in (".step", ".stp"):
+            raise HTTPException(status_code=400, detail="Only .step/.stp upload supported.")
+
+        tmp_name = f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}{suffix}"
+        dest = uploads_dir / tmp_name
+        dest.write_bytes(await file.read())
+
+        try:
+            return await asyncio.to_thread(components.cad_adapter.extract, dest)
+        except Exception as e:
+            logger.exception("cad_analysis_failed file=%s", dest)
+            raise HTTPException(status_code=502, detail=f"CAD analysis failed: {e}")
+        finally:
+            dest.unlink(missing_ok=True)  # STEP-Datei nach Analyse wieder löschen
+
     async def _answer_one(question: str, cad_metadata: dict[str, Any]) -> Answer:
         """Hilfsfunktion: führt Retrieval und Antwortgenerierung für eine einzelne Frage aus."""
         chunks = await asyncio.to_thread(components.retriever.retrieve, question, cad_metadata)
@@ -177,7 +200,6 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
             stable_json_dumps({
                 "questions": questions,
                 "cad_metadata": cad,
-                "format": fmt,
                 "answers": answers,
                 "models": {
                     "embedder": config.embedder.model_name,

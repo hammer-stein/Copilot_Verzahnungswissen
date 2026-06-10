@@ -6,8 +6,6 @@ import shutil
 
 # Direkter Import eurer bestehenden Module
 from src.step_parser import parse_step_file
-# Falls die Analyse-Funktion in der geometry_analyzer liegt, hier importieren:
-# from src.geometry_analyzer import analyze_gear_geometry 
 
 app = FastAPI(
     title="Gear Copilot API",
@@ -48,27 +46,13 @@ def analyze_gear(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # 3. Eure Pipeline ausführen
-        # Jetzt mit BEIDEN erforderlichen Argumenten (Eingabe und Ausgabe)
+        # 3. Pipeline ausführen: Parsing + Geometrie-Analyse, Ergebnis als GearParameters
         parsed_data = parse_step_file(file_path, output_path)
-        
-        # Der Analyzer prüft die Geometrie und wirft das fertige JSON-Objekt aus
-        # final_result = analyze_gear_geometry(parsed_data)
 
-        # Dummy-Rückgabe als Strukturbeispiel (wird durch euer echtes Ausgabe-Schema ersetzt):
-        final_result = {
-            "session_id": session_id,
-            "filename": file.filename,
-            "status": "processed",
-            "geometry": {
-                "module_mm": 2.0,
-                "num_teeth": 20,
-                "helix_angle_deg": 0.0,
-                "assembly_role": "standalone"
-            },
-            "warnings": [],
-            "confidence": 1.0
-        }
+        # Vollständiges Analyse-JSON zurückgeben, ergänzt um Session-Infos für das RAG-System
+        final_result = parsed_data.to_dict()
+        final_result["session_id"] = session_id
+        final_result["filename"] = file.filename
 
         return final_result
 
