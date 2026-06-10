@@ -1,56 +1,99 @@
-# KI-Copilot für Verzahnungswissen (Modulares RAG)
+# KI-Copilot für Verzahnungswissen
 
-Striktes RAG-System: Antworten **nur** aus hochgeladenen PDFs + (Stub-)Bauteildaten.
+Pipeline: **CAD-Datei → Parameter-JSON → RAG-Copilot → Antwort**
 
-## Setup
+```
+cad_processor/   ← CAD-Datei einlesen, Zahnrad-Parameter extrahieren (PythonOCC)
+     ↓ JSON
+RAG-System       ← Wissensbasis (PDFs) + Bauteilparameter → Copilot-Antworten
+```
 
-### 1) Python installieren und Dependencies
+---
+
+## Setup — CAD-Prozessor (Gruppe B)
+
+Benötigt **Miniconda** (wegen PythonOCC C++-Abhängigkeiten).
 
 ```bash
+# 1. conda-Umgebung erstellen (einmalig, ~5 min)
+conda env create -f cad_processor/environment.yml
+
+# 2. Umgebung aktivieren
+conda activate gear-copilot
+
+# 3. CAD-API starten
+cd cad_processor
+uvicorn src.main:app --reload --port 8001
+```
+
+Vollständige Anleitung: [`cad_processor/SETUP_ANLEITUNG.md`](cad_processor/SETUP_ANLEITUNG.md)
+
+---
+
+## Setup — RAG-System (Gruppe A)
+
+Benötigt **Docker** (für Qdrant) und **Ollama** (lokales LLM).
+
+```bash
+# 1. Python-Umgebung erstellen (einmalig)
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate       # Mac/Linux
+# .venv\Scripts\activate        # Windows
 pip install -r requirements.txt
-```
 
-### 2) Qdrant starten
-
-```bash
+# 2. Qdrant starten (Vektor-Datenbank)
 docker compose up -d
-```
 
-Qdrant läuft dann auf `http://localhost:6333`.
-
-### 3) Ollama starten (lokales LLM)
-
-- Ollama installieren: siehe [Ollama](https://ollama.com/)
-- Modell ziehen:
-
-```bash
+# 3. Ollama starten + Modell laden
 ollama pull llama3.2:3b
-```
 
-### 4) Konfiguration
+# 4. Konfiguration
+cp config.example.yaml config.yaml   # anpassen falls nötig
 
-`config.yaml` liegt im Repo-Root. Als Vorlage gibt es `config.example.yaml`.
-
-### 5) API starten
-
-```bash
+# 5. RAG-API starten
 uvicorn app.api.main:app --reload --port 8000
 ```
 
-Dann im Browser öffnen: `http://localhost:8000/` (liefert `frontend/index.html`).
+Frontend öffnen: `http://localhost:8000/`
 
-## API
+---
 
-- `POST /upload` (multipart `file`): PDF hochladen und indexieren
-- `GET /documents`: indexierte Dokumente (Summary)
-- `DELETE /documents/{doc_hash}`: Dokument löschen (alle Chunks via `doc_hash`)
-- `GET /cad/random`: zufälliges Zahnrad (Stub)
-- `POST /ask`: `{ questions: string[], cad_metadata: object, format?: "kurz" | ... }`
+## API-Endpunkte
+
+### CAD-Prozessor (Port 8001)
+- `POST /analyze` — STEP/IGES-Datei hochladen → JSON mit Zahnrad-Parametern
+
+### RAG-System (Port 8000)
+- `POST /upload` — PDF hochladen und indexieren
+- `POST /ask` — `{ questions: string[], cad_metadata: object }` → Copilot-Antwort
+- `GET /documents` — indexierte Dokumente
+- `DELETE /documents/{doc_hash}` — Dokument löschen
+- `GET /cad/random` — zufälliges Zahnrad (Stub)
+
+---
+
+## Projektstruktur
+
+```
+Copilot_Verzahnungswissen/
+├── cad_processor/              ← CAD-Prozessor (Gruppe B)
+│   ├── src/
+│   │   ├── step_parser.py      STEP-Datei einlesen
+│   │   ├── geometry_analyzer.py Zahnrad-Parameter berechnen
+│   │   ├── output_schema.py    JSON-Schema
+│   │   └── main.py             FastAPI
+│   ├── environment.yml         conda-Umgebung (gear-copilot)
+│   └── SETUP_ANLEITUNG.md
+├── app/                        ← RAG-System (Gruppe A)
+├── schemas/                    ← Gemeinsame JSON-Schemas
+├── frontend/
+├── requirements.txt            pip-Abhängigkeiten (RAG)
+├── docker-compose.yml          Qdrant
+└── config.example.yaml
+```
 
 ## Hinweise
 
-- Es gibt **keinen Konversationskontext** zwischen Anfragen (Absicht).
-- Quellen sind pro Antwort als `[Q1]..` referenziert und im Frontend als Chunk-Liste einsehbar.
-
+- Beide Services laufen lokal parallel (Port 8000 + 8001).
+- Es gibt keinen Konversationskontext zwischen Anfragen (Absicht).
+- Quellen sind pro Antwort als `[Q1]..` referenziert.

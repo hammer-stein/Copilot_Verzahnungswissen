@@ -59,7 +59,7 @@ In VS Code links auf das **Extensions-Icon** klicken (oder `Cmd+Shift+X` / `Strg
 
 ## Teil 3 — Git überprüfen
 
-Git ist für die Zusammenarbeit über GitLab nötig. Auf Mac meist schon installiert.
+Git ist für die Zusammenarbeit über GitHub nötig. Auf Mac meist schon installiert.
 
 ```bash
 git --version
@@ -83,21 +83,21 @@ git config --global --list
 
 ---
 
-## Teil 4 — GitLab Repo klonen (in VS Code)
+## Teil 4 — GitHub Repo klonen (in VS Code)
 
-"Klonen" = das gemeinsame Projekt von GitLab auf euren Rechner runterladen.
+"Klonen" = das gemeinsame Projekt von GitHub auf euren Rechner runterladen.
 
 1. VS Code öffnen
 2. `Cmd+Shift+P` (Mac) oder `Strg+Shift+P` (Windows) drücken
 3. `Git: Clone` eintippen → Enter
 4. Diese URL einfügen:
 ```
-https://gitlab.com/[euer-gitlab-pfad]/teamprojekt-ki-copilot.git
+https://github.com/hammer-stein/Copilot_Verzahnungswissen.git
 ```
 5. Ordner wählen wo das Projekt gespeichert werden soll (z.B. `Dokumente`)
 6. VS Code fragt "Would you like to open the cloned repository?" → **Open** klicken
 
-Das Projekt ist jetzt lokal auf eurem Rechner.
+Das Projekt ist jetzt lokal auf eurem Rechner. Der CAD-Prozessor-Code liegt im Unterordner `cad_processor/`.
 
 ---
 
@@ -113,8 +113,10 @@ Ein schwarzes Terminal-Panel öffnet sich unten. Ihr seid bereits automatisch im
 
 ### Umgebung erstellen
 
+Im VS Code Terminal, ausgehend vom **Root-Ordner des Repos**:
+
 ```bash
-conda env create -f environment.yml
+conda env create -f cad_processor/environment.yml
 ```
 
 > ⏳ Das dauert **3–5 Minuten** — pythonocc ist groß. Einfach warten bis die Eingabezeile wieder erscheint.
@@ -211,20 +213,20 @@ teamprojekt-ki-copilot/
 │   └── output_schema.py        JSON-Struktur für Gruppe A
 │
 ├── data/
-│   └── examples/               Test-STEP-Dateien (nicht auf GitLab!)
+│   └── examples/               Test-STEP-Dateien (nicht auf GitHub!)
 │
-├── output/                     Generierte JSONs (nicht auf GitLab!)
+├── output/                     Generierte JSONs (nicht auf GitHub!)
 │
 ├── .vscode/
 │   └── settings.json           VS Code Einstellungen (für alle gleich)
 │
 ├── environment.yml             ← conda-Umgebung (NICHT verändern ohne Absprache)
 ├── Dockerfile                  Docker-Setup für später
-├── .gitignore                  Was nicht auf GitLab kommt
+├── .gitignore                  Was nicht auf GitHub kommt
 └── README.md
 ```
 
-> ⚠️ `data/` und `output/` sind in `.gitignore` — große CAD-Dateien und generierte JSONs kommen **nicht** ins GitLab-Repo.
+> ⚠️ `data/` und `output/` sind in `.gitignore` — große CAD-Dateien und generierte JSONs kommen **nicht** ins GitHub-Repo.
 
 ---
 
