@@ -8,6 +8,7 @@ frühzeitig abgefangen, nicht erst zur Laufzeit.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -54,8 +55,13 @@ class MetadataExtractorConfig(BaseModel):
 
 
 class CADAdapterConfig(BaseModel):
-    """Wählt den CAD-Adapter. "random_gear_stub" generiert Zufallsdaten; zukünftig: "pythonocc"."""
-    implementation: Literal["random_gear_stub"]
+    """
+    Wählt den CAD-Adapter. "random_gear_stub" generiert Zufallsdaten (Demo/Test);
+    "cad_processor_http" sendet STEP-Dateien an den cad_processor-Service (Port 8001).
+    """
+    implementation: Literal["random_gear_stub", "cad_processor_http"]
+    url: str = "http://localhost:8001"
+    timeout_s: int = 120
 
 
 class VectorStoreConfig(BaseModel):
@@ -116,6 +122,16 @@ def load_config(path: Path) -> AppConfig:
     Liest die YAML-Datei und validiert sie gegen AppConfig.
     yaml.safe_load verhindert Ausführung von Code in der YAML-Datei.
     Pydantic wirft ValidationError mit klarer Fehlermeldung bei ungültigen Werten.
+    Umgebungsvariablen überschreiben die Service-Adressen (für Docker Compose,
+    wo Services über ihre Container-Namen statt localhost erreichbar sind).
     """
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    if os.getenv("QDRANT_HOST"):
+        raw.setdefault("vector_store", {})["host"] = os.environ["QDRANT_HOST"]
+    if os.getenv("CAD_PROCESSOR_URL"):
+        raw.setdefault("cad_adapter", {})["url"] = os.environ["CAD_PROCESSOR_URL"]
+    if os.getenv("OLLAMA_URL"):
+        raw.setdefault("metadata_extractor", {})["ollama_url"] = os.environ["OLLAMA_URL"]
+
     return AppConfig.model_validate(raw)

@@ -442,7 +442,7 @@ def parse_step_file(input_path: str, output_path: str) -> GearParameters:
     print("\n[1/5] STEP-Datei laden...")
     shape = load_step(input_path)
     if shape is None:
-        sys.exit(1)
+        raise ValueError(f"STEP-Datei konnte nicht geladen werden: {input_path}")
 
     params = GearParameters(source_file=os.path.basename(input_path))
 
@@ -546,4 +546,8 @@ if __name__ == "__main__":
     parser.add_argument("--output", "-o", default="output/gear_parameters.json",
                         help="JSON-Ausgabepfad (default: output/gear_parameters.json)")
     args = parser.parse_args()
-    parse_step_file(args.input, args.output)
+    try:
+        parse_step_file(args.input, args.output)
+    except ValueError as e:
+        print(f"\n[FEHLER] {e}")
+        sys.exit(1)

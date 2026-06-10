@@ -22,6 +22,7 @@ from app.core.interfaces import (
     VectorStore,
 )
 from app.implementations.answer_generator_ollama import OllamaAnswerGenerator
+from app.implementations.cad_processor_client import CadProcessorClient
 from app.implementations.cad_random_gear import RandomGearGenerator
 from app.implementations.chunker_recursive import RecursiveTextChunker
 from app.implementations.chunker_semantic import SemanticChunker
@@ -109,9 +110,15 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
     else:
         raise ValueError(f"Unknown metadata_extractor: {config.metadata_extractor.implementation}")
 
-    # 5. CAD-Adapter – aktuell nur der Zufalls-Stub
+    # 5. CAD-Adapter – Zufalls-Stub (Demo) oder HTTP-Client zum cad_processor-Service
+    cad_adapter: CADAdapter
     if config.cad_adapter.implementation == "random_gear_stub":
-        cad_adapter: CADAdapter = RandomGearGenerator()
+        cad_adapter = RandomGearGenerator()
+    elif config.cad_adapter.implementation == "cad_processor_http":
+        cad_adapter = CadProcessorClient(
+            url=config.cad_adapter.url,
+            timeout_s=config.cad_adapter.timeout_s,
+        )
     else:
         raise ValueError(f"Unknown cad_adapter: {config.cad_adapter.implementation}")
 
