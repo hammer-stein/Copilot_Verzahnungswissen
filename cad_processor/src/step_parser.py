@@ -13,6 +13,7 @@ Verwendung:
 """
 
 import argparse
+import math
 import os
 import sys
 
@@ -23,12 +24,11 @@ from OCC.Core.BRepBndLib import brepbndlib
 from OCC.Core.Bnd import Bnd_Box
 from OCC.Core.BRepGProp import brepgprop
 from OCC.Core.GProp import GProp_GProps
-from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_REVERSED, TopAbs_FORWARD, TopAbs_SOLID
+from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_REVERSED, TopAbs_FORWARD
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
-from OCC.Core.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane, GeomAbs_Cone, GeomAbs_Torus
-from OCC.Core.GeomLProp import GeomLProp_CurveTool
-import math
+from OCC.Core.GeomAbs import (GeomAbs_Cylinder, GeomAbs_Plane, GeomAbs_Cone,
+                               GeomAbs_Torus, GeomAbs_Line)
 
 # Eigene Module
 sys.path.insert(0, os.path.dirname(__file__))
@@ -94,25 +94,7 @@ def get_mass_properties(shape):
     surface = round(surf_props.Mass(), 3)
 
     return volume, surface
-# ─────────────────────────────────────────────
-# PRIO 2: Baugruppen-Struktur erkennen
-# ─────────────────────────────────────────────
 
-def detect_assembly_structure(shape) -> str:
-    """Prüft, ob die Shape ein Einzelteil oder eine Baugruppe ist."""
-    solids = []
-    explorer = TopExp_Explorer(shape, TopAbs_SOLID)
-    while explorer.More():
-        solids.append(explorer.Current())
-        explorer.Next()
-
-    if len(solids) <= 1:
-        return "standalone"
-    
-    print(f"    [Baugruppe erkannt] {len(solids)} Einzelteile gefunden.")
-    if len(solids) >= 3: 
-        return "assembly_detected"
-    return "complex_assembly"
 
 # ─────────────────────────────────────────────
 # PRIO 1 & 2: Flächen-Analyse
@@ -212,15 +194,16 @@ def extract_cylinder_hierarchy(cylinders):
 # ─────────────────────────────────────────────
 # PRIO 2: Kanten-Analyse
 # ─────────────────────────────────────────────
+
 def analyze_edges(shape):
     """
-    Zählt Kanten und ihre Längen. Extrahiert zusätzlich Kantenwinkel
-    zur Z-Achse, um den Schrägungswinkel präzise bestimmen zu können.
+    Zählt Kanten und ihre Längen.
+    Periodische Muster deuten auf Zähne hin.
+    Kurze parallele Kanten-Cluster → Passfedernut (keyway).
     """
     total_edges = 0
     edge_lengths = []
-    short_edges = 0
-    edge_angles_to_z = []
+    short_edges = 0   # kurze, gerade Kanten (Passfedernut-Indikator)
 
     explorer = TopExp_Explorer(shape, TopAbs_EDGE)
     while explorer.More():
@@ -232,30 +215,13 @@ def analyze_edges(shape):
             length = round(props.Mass(), 4)
             if length > 0:
                 edge_lengths.append(length)
-                if length < 5.0:
+                if length < 5.0:   # kurze Kante < 5 mm = Nut-Kandidat
                     short_edges += 1
-                
-                # NEU: Richtungsvektor der Kante für Schrägungswinkel auslesen
-                try:
-                    curve = BRepAdaptor_Curve(edge)
-                    u_min = curve.FirstParameter()
-                    u_max = curve.LastParameter()
-                    u_mid = (u_min + u_max) / 2.0
-                    
-                    vec = curve.DN(u_mid, 1)
-                    vec.Normalize()
-                    
-                    cos_angle = min(1.0, max(-1.0, abs(vec.Z()))) 
-                    angle_deg = math.degrees(math.acos(cos_angle))
-                    
-                    helix_angle_candidate = min(angle_deg, 90 - angle_deg)
-                    edge_angles_to_z.append(helix_angle_candidate)
-                except Exception:
-                    pass
         except Exception:
             pass
         explorer.Next()
 
+    # Passfedernut-Heuristik: viele kurze Kanten relativ zur Gesamtzahl
     keyway_present = None
     if total_edges > 0:
         short_ratio = short_edges / total_edges
@@ -264,7 +230,97 @@ def analyze_edges(shape):
         elif total_edges > 20:
             keyway_present = False
 
-    return total_edges, edge_lengths, keyway_present, edge_angles_to_z
+    return total_edges, edge_lengths, keyway_present
+
+
+# ─────────────────────────────────────────────
+# PRIO 2: Helix-Abtastung für Schrägungswinkel
+# ─────────────────────────────────────────────
+
+def extract_edge_helix_data(shape, outer_radius: float, face_width_mm: float) -> list:
+    """
+    Tastet alle nicht-linearen Kanten als 3D-Kurven ab und berechnet dθ/dz
+    in Zylinderkoordinaten (r, θ, z).
+
+    Gibt Liste von (avg_r, d_theta_dz) zurück — nur Kanten mit signifikantem Z-Span
+    nahe der Zahnflanke (zwischen Bohrung und Kopfkreis).
+
+    Verwendung durch detect_helix_angle_v2():
+        β = arctan(r_pitch × |dθ/dz|)
+    """
+    if outer_radius <= 0 or face_width_mm <= 0:
+        return []
+
+    results = []
+    N_SAMPLES = 15
+
+    explorer = TopExp_Explorer(shape, TopAbs_EDGE)
+    while explorer.More():
+        edge = explorer.Current()
+        try:
+            adaptor = BRepAdaptor_Curve(edge)
+
+            # Gerade Linien überspringen (Stirnflächen, Bohrungskanten)
+            if adaptor.GetType() == GeomAbs_Line:
+                explorer.Next()
+                continue
+
+            t0 = adaptor.FirstParameter()
+            t1 = adaptor.LastParameter()
+            if abs(t1 - t0) < 1e-10:
+                explorer.Next()
+                continue
+
+            pts = []
+            for i in range(N_SAMPLES):
+                t = t0 + (t1 - t0) * i / (N_SAMPLES - 1)
+                p = adaptor.Value(t)
+                r = math.sqrt(p.X() ** 2 + p.Y() ** 2)
+                theta = math.atan2(p.Y(), p.X())
+                pts.append((r, theta, p.Z()))
+
+            # Kanten zu nah an der Rotationsachse überspringen (Bohrung / Nabe)
+            avg_r = sum(p[0] for p in pts) / N_SAMPLES
+            if avg_r < outer_radius * 0.35:
+                explorer.Next()
+                continue
+
+            # Z-Span muss signifikant sein (mindestens 25% der Zahnbreite)
+            z_vals = [p[2] for p in pts]
+            z_span = max(z_vals) - min(z_vals)
+            if z_span < face_width_mm * 0.25:
+                explorer.Next()
+                continue
+
+            # Theta-Unwrapping: Sprünge bei ±π auflösen
+            theta_uw = [pts[0][1]]
+            for i in range(1, N_SAMPLES):
+                d = pts[i][1] - pts[i - 1][1]
+                if d > math.pi:
+                    d -= 2 * math.pi
+                elif d < -math.pi:
+                    d += 2 * math.pi
+                theta_uw.append(theta_uw[-1] + d)
+
+            # Lineare Regression: dθ/dz (Steigung der Helixlinie)
+            n = N_SAMPLES
+            sz  = sum(z_vals)
+            st  = sum(theta_uw)
+            szt = sum(z * t for z, t in zip(z_vals, theta_uw))
+            sz2 = sum(z ** 2 for z in z_vals)
+            denom = n * sz2 - sz ** 2
+            if abs(denom) < 1e-10:
+                explorer.Next()
+                continue
+
+            d_theta_dz = (n * szt - sz * st) / denom
+            results.append((avg_r, d_theta_dz))
+
+        except Exception:
+            pass
+        explorer.Next()
+
+    return results
 
 
 # ─────────────────────────────────────────────
@@ -389,7 +445,6 @@ def parse_step_file(input_path: str, output_path: str) -> GearParameters:
         sys.exit(1)
 
     params = GearParameters(source_file=os.path.basename(input_path))
-    params.assembly_role = detect_assembly_structure(shape)
 
     # PRIO 1: Bounding Box & Masse
     print("[2/5] Bounding Box & Masse...")
@@ -444,9 +499,15 @@ def parse_step_file(input_path: str, output_path: str) -> GearParameters:
 
     # PRIO 2: Kanten
     print("[4/5] Kanten analysieren...")
-    total_edges, edge_lengths, keyway_present, edge_angles_to_z = analyze_edges(shape)
+    total_edges, edge_lengths, keyway_present = analyze_edges(shape)
     params.keyway_present = keyway_present
     print(f"    Kanten: {total_edges}  |  Passfedernut: {keyway_present}")
+
+    # PRIO 2: Helix-Abtastung (3D-Kurven entlang Z-Achse)
+    edge_helix_data = extract_edge_helix_data(
+        shape, params.outer_diameter_mm / 2, params.face_width_mm
+    )
+    print(f"    Helix-Kanten für β: {len(edge_helix_data)}")
 
     # PRIO 3: Metadaten
     print("[5/5] Metadaten...")
@@ -463,7 +524,8 @@ def parse_step_file(input_path: str, output_path: str) -> GearParameters:
     # Geometrie-Analyse (Schritt 2)
     print("\n[Geometrie-Analyse]...")
     params = analyze_gear_geometry(
-        params, cylinders, planes, cones, tori, total_edges, edge_lengths, edge_angles_to_z
+        params, cylinders, planes, cones, tori,
+        total_edges, edge_helix_data, total_faces
     )
 
     params.summary()

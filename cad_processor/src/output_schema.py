@@ -88,8 +88,7 @@ class GearParameters:
     # Bauteil-Kontext
     keyway_present: Optional[bool] = None            # Passfedernut vorhanden?
     has_flanges: Optional[bool] = None               # Absätze / Flansche?
-    assembly_role: Optional[str] = None             # "sun" | "planet" | "ring" | "standalone" | "complex_assembly"
-    # ───────────────────
+
     # ═══════════════════════════════════════════════════════════
     # PRIO 3: Optional aus PMI / STEP-Metadaten
     # ═══════════════════════════════════════════════════════════
@@ -116,6 +115,11 @@ class GearParameters:
     confidence: float = 1.0                          # 0.0 (unsicher) bis 1.0 (sicher)
     warnings: list = field(default_factory=list)
     extraction_notes: dict = field(default_factory=dict)
+
+    # ═══════════════════════════════════════════════════════════
+    # Hinweise (Normen, Anwendung, Fertigung, Qualität, Optimierung)
+    # ═══════════════════════════════════════════════════════════
+    hints: Optional[dict] = None
 
     # ══════════════════════════════════════════════════════════
     # Methoden
@@ -161,7 +165,6 @@ class GearParameters:
                 "worm_starts": self.worm_starts,
                 "keyway_present": self.keyway_present,
                 "has_flanges": self.has_flanges,
-                "assembly_role": self.assembly_role,
             },
 
             "material_context": {
@@ -189,6 +192,8 @@ class GearParameters:
                     "z": self.bbox_z_mm,
                 },
             },
+
+            "hints": self.hints or {},
         }
 
     def to_json(self, output_path: str):

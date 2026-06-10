@@ -11,41 +11,70 @@ import math
 from typing import List, Tuple, Optional
 
 from output_schema import GearParameters
+from gear_hints import generate_gear_hints
 
 
 # ─────────────────────────────────────────────
 # PRIO 1: Zahnrad-Typ erkennen
 # ─────────────────────────────────────────────
 
-def detect_gear_type(cylinders, planes: int, cones: list, tori: list) -> Tuple[str, bool, Optional[float]]:
+def detect_gear_type(
+    cylinders, planes: int, cones: list, tori: list,
+    outer_diameter_mm: float = 0.0, face_width_mm: float = 0.0,
+    total_faces: int = 0
+) -> Tuple[str, bool, Optional[float]]:
     """
-    Erkennt den Zahnrad-Typ anhand der Flächen-Verteilung.
+    Erkennt den Zahnrad-Typ anhand der Flächen-Verteilung und Geometrie-Kenngrößen.
 
     Gibt zurück:
-        gear_type     : "spur" | "helical" | "bevel" | "internal" | "worm" | "rack" | "unknown"
+        gear_type     : "spur" | "helical" | "bevel" | "internal" | "worm" |
+                        "worm_wheel" | "rack" | "unknown"
         is_internal   : True wenn Innenverzahnung
         cone_angle_deg: Halbkegelwinkel in Grad (nur bei Kegelrad), sonst None
     """
     num_cylinders = len(cylinders)
     inner_cylinders = [r for r, is_inner in cylinders if is_inner]
-    is_internal = len(inner_cylinders) > num_cylinders / 2
+    outer_cylinders = [r for r, is_inner in cylinders if not is_inner]
 
-    # Kegelrad: mehrere konische Flächen mit signifikantem Winkel
-    if len(cones) >= 4:
-        angles_deg = [abs(math.degrees(a)) for a, _ in cones if abs(a) > 0.01]
-        if angles_deg:
-            cone_angle = round(sum(angles_deg) / len(angles_deg), 2)
-            return "bevel", False, cone_angle
+    # Aspektverhältnis b/d_a (Schnecke >> 1, Stirnrad/Kegelrad << 1)
+    aspect_ratio = face_width_mm / max(outer_diameter_mm, 1.0)
 
-    # Innenverzahnung
+    # ── Kegelrad: konische Flächen mit signifikantem Winkel + Mindest-Anteil ──
+    # Fasen (45°-Kanten) erzeugen ebenfalls Kegel, aber mit kleiner Flächenzahl.
+    # Der Anteilscheck cone_fraction > 0.05 trennt Kegelräder von gefasten Stirnrädern.
+    significant_cones = [(a, i) for a, i in cones if abs(math.degrees(a)) > 5.0]
+    cone_fraction = len(cones) / max(total_faces, 1)
+    if len(significant_cones) >= 4 and cone_fraction > 0.05:
+        angles_deg = [abs(math.degrees(a)) for a, _ in significant_cones]
+        cone_angle = round(sum(angles_deg) / len(angles_deg), 2)
+        return "bevel", False, cone_angle
+
+    # ── Schnecke: stark gestrecktes Aspektverhältnis + hohe Tori-Dichte ──
+    # Schnecken haben b/d_a >> 1 (Länge > Durchmesser) und viele
+    # Torus-Flächen (je eine pro Gewindegang-Fußrundung).
+    tori_per_cyl = len(tori) / max(num_cylinders, 1)
+    if aspect_ratio > 1.5 and (tori_per_cyl > 8 or aspect_ratio > 3.0):
+        return "worm", False, None
+
+    # ── Schneckenrad: hoher Tori-Anteil bei normalem Aspektverhältnis ──
+    # Schneckenrad-Zahnflanken sind Sattelflächen (toroidal), daher
+    # liegt der Torus-Anteil deutlich höher als bei Stirnrädern.
+    # total_faces > 0 sicherstellt, dass der Anteil sinnvoll berechenbar ist.
+    tori_fraction = len(tori) / max(total_faces, 1)
+    if tori_fraction > 0.30 and aspect_ratio < 1.0 and num_cylinders > 0 and total_faces > 0:
+        return "worm_wheel", False, None
+
+    # ── Innenverzahnung: mehr Innenzylinder als Außenzylinder ──
+    is_internal = (len(inner_cylinders) > len(outer_cylinders)
+                   and len(inner_cylinders) >= 2)
     if is_internal:
         return "internal", True, None
 
-    # Zahnstange: keine Rotationssymmetrie — sehr viele Planes, kaum Zylinder
+    # ── Zahnstange: keine Rotationssymmetrie, viele Ebenen ──
     if num_cylinders == 0 and planes > 10:
         return "rack", False, None
 
-    # Stirnrad vs. Schrägverzahnung: wird in detect_helix_angle entschieden
+    # ── Stirnrad vs. Schrägverzahnung: wird in detect_helix_angle_v2 entschieden ──
     return "spur", False, None
 
 
@@ -57,23 +86,22 @@ def estimate_num_teeth(total_edges: int, total_faces: int, tori: list) -> Option
     """
     Schätzt die Zahnzahl aus der Topologie.
 
-    Methode 1 (bevorzugt): Torische Flächen = Zahnfuß-Verrundungen → je 2 pro Zahn
-    Methode 2 (Fallback):  Kanten-basierte Näherung (~14 Kanten pro Zahn)
+    Methode 1 (bevorzugt): Torische Flächen = Zahnfuß-Verrundungen.
+        FreeCAD: je 2 Tori/Zahn.  SolidWorks: je 2.  CATIA/NX: je 1–2.
+        Probiert 1 und 2 Tori/Zahn und wählt plausiblsten Wert.
+    Methode 2 (Fallback):  entfällt — rein kanten-basierte Schätzung
+        ist zu CAD-spezifisch (FreeCAD 36, SolidWorks 10–20, CATIA 40–80).
     """
     if total_edges < 20:
         return None
 
-    # Methode 1: Tori (je 2 Tori pro Zahn)
     num_tori = len(tori)
     if num_tori >= 2:
-        estimated_z = num_tori // 2
-        if 5 <= estimated_z <= 200:
-            return estimated_z
-
-    # Methode 2: Kanten-Heuristik (~36 Kanten/Zahn für FreeCAD-STEP-Exporte)
-    estimated_z = round(total_edges / 36)
-    if 5 <= estimated_z <= 200:
-        return estimated_z
+        # Versuche 1 und 2 Tori pro Zahn; bevorzuge den Wert im plausiblen Bereich
+        for tori_per_tooth in (2, 1):
+            estimated_z = num_tori // tori_per_tooth
+            if 5 <= estimated_z <= 200:
+                return estimated_z
 
     return None
 
@@ -82,15 +110,22 @@ def estimate_z_from_diameter(
     outer_diameter_mm: float, total_edges: int
 ) -> Tuple[Optional[int], Optional[float]]:
     """
-    Primärmethode v2: Berechnet (z, m) gemeinsam aus d_a und Kantenzahl.
+    Primärmethode: Berechnet (z, m) gemeinsam aus d_a und optionaler Kantenzahl.
 
-    Für jeden DIN-780-Modul: z_raw = d_a/m - 2. Kandidaten mit nahezu-
-    ganzzahligem z_raw werden per Kanten-pro-Zahn-Nähe selektiert.
-    Gibt (z, m) zurück oder (None, None) wenn kein plausibler Kandidat.
+    Für jeden DIN-780-Modul: z_raw = d_a/m - 2.  Kandidaten mit nahezu-
+    ganzzahligem z_raw (Integralitätsfehler < 12 %) werden gesammelt.
+
+    Sanity-Filter via Kanten (CAD-agnostisch):
+        EDG_MIN / EDG_MAX = [5, 120] — deckt FreeCAD (~36), SolidWorks (~10–20)
+        und CATIA (~40–80) ab.  Kanten werden NUR als Ausschlussfilter
+        verwendet, NICHT als Tiebreaker-Zielwert.
+
+    Tiebreaker (CAD-agnostisch):
+        1. Kleinster Integralitätsfehler (geometrisch am exaktesten)
+        2. Bei Gleichstand: größerer Modul bevorzugt (konservativere Schätzung)
     """
     INTEGRALITY_THRESHOLD = 0.12
-    TARGET_EDGES_PER_TOOTH = 36    # empirisch: FreeCAD STEP-Export
-    EDG_MIN, EDG_MAX = 8, 80
+    EDG_MIN, EDG_MAX = 5, 120   # breit genug für alle gängigen CAD-Exporte
 
     candidates = []
     for m in STANDARD_MODULES:
@@ -106,20 +141,18 @@ def estimate_z_from_diameter(
         edt = total_edges / z_int if total_edges > 0 else None
         if edt is not None and not (EDG_MIN <= edt <= EDG_MAX):
             continue
-        candidates.append((rel_err, m, z_int, edt))
+        candidates.append((rel_err, m, z_int))
 
     if not candidates:
         return None, None
     if len(candidates) == 1:
-        _, m, z, _ = candidates[0]
+        _, m, z = candidates[0]
         return z, m
 
-    # Tiebreaker: Kanten-pro-Zahn nächster am Zielwert, dann Integralität
-    scored = sorted(
-        (abs((edt or 0) - TARGET_EDGES_PER_TOOTH), rel_err, m, z)
-        for rel_err, m, z, edt in candidates
-    )
-    _, _, m_best, z_best = scored[0]
+    # Tiebreaker: kleinster Integralitätsfehler, bei Gleichstand größerer Modul
+    scored = sorted((rel_err, -m, z) for rel_err, m, z in candidates)
+    _, neg_m, z_best = scored[0]
+    m_best = -neg_m
     return z_best, m_best
 
 
@@ -210,29 +243,42 @@ def calculate_tooth_profile(
 
 
 # ─────────────────────────────────────────────
-# PRIO 2: Schrägungswinkel schätzen
+# PRIO 2: Schrägungswinkel aus 3D-Kurven
 # ─────────────────────────────────────────────
 
-def detect_helix_angle(edge_angles_to_z: List[float], face_width_mm: float) -> Optional[float]:
+def detect_helix_angle_v2(edge_helix_data: list,
+                           pitch_radius: Optional[float]) -> Optional[float]:
     """
-    Berechnet den Schrägungswinkel β basierend auf den exakten Kantenvektoren.
+    Berechnet den Schrägungswinkel β aus der Helixsteigung der Zahnflankenkanten.
+
+    Formel: β = arctan(r_pitch × |dθ/dz|)
+
+    edge_helix_data: Liste von (avg_r, d_theta_dz) aus extract_edge_helix_data().
+    - Stirnrad  (β=0°): dθ/dz ≈ 0 — Kanten laufen parallel zur Z-Achse
+    - Schrägverzahnung: dθ/dz ≠ 0 — Kanten drehen sich um die Z-Achse
+
+    Gibt den Median aller Kandidaten zurück (robust gegen Ausreißer).
     """
-    if not edge_angles_to_z:
+    if not edge_helix_data or pitch_radius is None or pitch_radius <= 0:
         return None
 
-    # Ignoriere Kanten nahe 90° (Stirnflächen, Flansche)
-    relevant_angles = [a for a in edge_angles_to_z if 0 <= a < 45]
-    
-    if not relevant_angles:
-        return None
+    beta_candidates = []
+    for _avg_r, d_theta_dz in edge_helix_data:
+        tan_beta = pitch_radius * abs(d_theta_dz)
+        if tan_beta < 0.005:
+            # Unter ~0.3° → Rauschen / Stirnrad-Kante
+            beta_candidates.append(0.0)
+        else:
+            beta_deg = math.degrees(math.atan(tan_beta))
+            if 0.5 < beta_deg <= 55:
+                beta_candidates.append(beta_deg)
 
-    # Bilde den Durchschnitt der relevanten Winkel
-    avg_angle = sum(relevant_angles) / len(relevant_angles)
-    
-    if avg_angle < 2.0:
-        return 0.0   # Stirnverzahnung
-    
-    return round(avg_angle, 1)
+    if not beta_candidates:
+        return 0.0
+
+    beta_candidates.sort()
+    median_beta = beta_candidates[len(beta_candidates) // 2]
+    return round(median_beta, 1) if median_beta > 0.3 else 0.0
 
 
 # ─────────────────────────────────────────────
@@ -270,13 +316,14 @@ def estimate_mass(volume_mm3: float, material: Optional[str]) -> Optional[float]
 # ─────────────────────────────────────────────
 
 NORM_MAP = {
-    "spur":     ["DIN 867", "DIN ISO 1328-1", "ISO 1122-1"],
-    "helical":  ["DIN 867", "DIN ISO 1328-1", "ISO 1122-1"],
-    "bevel":    ["DIN 868", "DIN ISO 17485", "ISO 23509"],
-    "internal": ["DIN 867", "DIN ISO 1328-1"],
-    "worm":     ["DIN 3975", "ISO 1122-2"],
-    "rack":     ["DIN 867", "DIN 3960"],
-    "unknown":  ["DIN 867"],
+    "spur":       ["DIN 867", "DIN ISO 1328-1", "ISO 1122-1"],
+    "helical":    ["DIN 867", "DIN ISO 1328-1", "ISO 1122-1"],
+    "bevel":      ["DIN 868", "DIN ISO 17485", "ISO 23509"],
+    "internal":   ["DIN 867", "DIN ISO 1328-1"],
+    "worm":       ["DIN 3975", "ISO 1122-2"],
+    "worm_wheel": ["DIN 3975", "ISO 1122-2"],
+    "rack":       ["DIN 867", "DIN 3960"],
+    "unknown":    ["DIN 867"],
 }
 
 def assign_norm_reference(gear_type: Optional[str]) -> list:
@@ -297,8 +344,8 @@ def analyze_gear_geometry(
     cones: list,
     tori: list,
     total_edges: int,
-    edge_lengths: List[float],
-    edge_angles_to_z: List[float]
+    edge_helix_data: list,
+    total_faces: int = 0
 ) -> GearParameters:
     """
     Hauptfunktion: Leitet alle Zahnrad-Parameter aus den Rohdaten ab.
@@ -306,12 +353,15 @@ def analyze_gear_geometry(
     """
 
     # ── Typ erkennen ───────────────────────────────────────────────
-    gear_type, is_internal, cone_angle = detect_gear_type(cylinders, planes, cones, tori)
+    gear_type, is_internal, cone_angle = detect_gear_type(
+        cylinders, planes, cones, tori,
+        params.outer_diameter_mm, params.face_width_mm, total_faces
+    )
     params.gear_type = gear_type
     params.is_internal_gear = is_internal
     params.cone_angle_deg = cone_angle
     params.symmetry_type = "translational" if gear_type == "rack" else "rotational"
-    params.extraction_notes["gear_type"] = "Erkannt anhand Flächen-Verteilung"
+    params.extraction_notes["gear_type"] = "Erkannt anhand Flächen-Verteilung und Geometrie-Kenngrößen"
     print(f"  Zahnrad-Typ:       {gear_type}  (Innenverzahnung: {is_internal})")
     if cone_angle is not None:
         print(f"  Konuswinkel δ:     {cone_angle}°")
@@ -361,24 +411,30 @@ def analyze_gear_geometry(
             print(f"  Fußkreis d_f:      {params.root_diameter_mm} mm")
             print(f"  Zahnhöhe h:        {params.tooth_height_mm} mm")
             print(f"  Profilverschiebung x: {params.profile_shift_x}")
-            if params.profile_shift_x != 0.0:
-                params.warnings.append("Profilverschiebung x basiert auf Kopfkreis und ignoriert eventuelle Kopfkürzungen.")
 
-    # ── Schrägungswinkel ───────────────────────────────────────────
-    beta = detect_helix_angle(edge_angles_to_z, params.face_width_mm)
-    params.helix_angle_deg = beta
-    if beta is not None:
-        if beta == 0.0:
-            params.gear_type = "spur" if not is_internal else "internal"
-            print("  Schrägungswinkel:  0° → Stirnverzahnung bestätigt")
+    # ── Schrägungswinkel (3D-Kurven-Abtastung entlang Z-Achse) ────
+    # Nur für Stirnrad-Basis-Typ anwenden; Kegelrad/Schnecke nicht überschreiben
+    pitch_radius = (params.pitch_diameter_mm / 2
+                    if params.pitch_diameter_mm else params.outer_diameter_mm / 2)
+    if gear_type in ("spur", "helical"):
+        beta = detect_helix_angle_v2(edge_helix_data, pitch_radius)
+        params.helix_angle_deg = beta
+        if beta is not None:
+            if beta == 0.0:
+                params.gear_type = "spur" if not is_internal else "internal"
+                print("  Schrägungswinkel:  0° → Stirnverzahnung bestätigt")
+            else:
+                params.gear_type = "helical"
+                params.extraction_notes["helix_angle"] = (
+                    "Aus Helixsteigung dθ/dz der Zahnflankenkanten berechnet"
+                )
+                params.warnings.append(f"Schrägungswinkel β={beta}° aus 3D-Kurven-Abtastung")
+                print(f"  Schrägungswinkel:  {beta}° → Schrägverzahnung erkannt")
         else:
-            params.gear_type = "helical"
-            params.extraction_notes["helix_angle"] = "Aus Kantenvektoren zur Z-Achse ermittelt"
-            params.warnings.append(f"Schrägungswinkel β={beta}° ist eine Schätzung")
-            print(f"  Schrägungswinkel:  {beta}° → Schrägverzahnung erkannt")
+            params.warnings.append("Schrägungswinkel nicht bestimmbar (keine geeigneten Kanten)")
+            print("  Schrägungswinkel:  nicht bestimmbar")
     else:
-        params.warnings.append("Schrägungswinkel nicht bestimmbar")
-        print("  Schrägungswinkel:  nicht bestimmbar")
+        print(f"  Schrägungswinkel:  nicht relevant für Typ '{gear_type}'")
 
     # ── Masse schätzen ─────────────────────────────────────────────
     params.mass_kg = estimate_mass(params.volume_mm3, params.material)
@@ -387,5 +443,8 @@ def analyze_gear_geometry(
 
     # ── Normreferenzen ─────────────────────────────────────────────
     params.norm_reference = assign_norm_reference(params.gear_type)
+
+    # ── Hinweise (Normen, Anwendung, Fertigung, Qualität, Optimierung) ──
+    params.hints = generate_gear_hints(params)
 
     return params

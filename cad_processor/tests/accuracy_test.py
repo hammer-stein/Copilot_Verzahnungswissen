@@ -7,7 +7,9 @@ misst die Genauigkeit der extrahierten Parameter gegen bekannte Soll-Werte.
 Verwendung:
     conda activate gear-copilot
     python tests/accuracy_test.py
-    python tests/accuracy_test.py --step-dir data/examples
+   
+   
+     python tests/accuracy_test.py --step-dir data/examples
     python tests/accuracy_test.py --warn 2.0 --error 5.0
 """
 
@@ -38,10 +40,9 @@ PARAM_MAP = {
     "face_width_mm":      ("basic_geometry", "face_width_mm"),
     "helix_angle_deg":    ("tooth_profile", "helix_angle_deg"),
     "pressure_angle_deg": ("tooth_profile", "pressure_angle_deg"),
-    "assembly_role":      ("topology", "assembly_role"),
 }
 
-EXACT_MATCH_PARAMS = {"gear_type", "num_teeth", "is_internal_gear", "assembly_role"}
+EXACT_MATCH_PARAMS = {"gear_type", "num_teeth", "is_internal_gear"}
 
 
 def _get_nested(data: dict, *keys):

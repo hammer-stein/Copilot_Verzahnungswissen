@@ -14,6 +14,7 @@ import sys
 import os
 import math
 import json
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from geometry_analyzer import (
@@ -22,11 +23,13 @@ from geometry_analyzer import (
     estimate_num_teeth,
     estimate_z_from_diameter,
     detect_gear_type,
+    detect_helix_angle_v2,
     estimate_mass,
     assign_norm_reference,
     STANDARD_MODULES,
 )
 from output_schema import GearParameters
+from gear_hints import generate_gear_hints, GEAR_KNOWLEDGE
 
 
 # ─────────────────────────────────────────────
@@ -288,9 +291,6 @@ class TestOutputSchema:
         d = params.to_dict()
         assert d["basic_geometry"]["outer_diameter_mm"] == 64.0
         assert d["tooth_profile"]["num_teeth"] == 30
-        params.assembly_role = "planet"
-        d = params.to_dict()  # Neu generieren
-        assert d["topology"]["assembly_role"] == "planet"
 
     def test_to_json_creates_valid_file(self, tmp_path):
         params = GearParameters(source_file="test.stp")
@@ -310,30 +310,196 @@ class TestOutputSchema:
     def test_confidence_default_is_1(self):
         params = GearParameters(source_file="test.stp")
         assert params.confidence == 1.0
+
+    def test_hints_field_in_to_dict(self):
+        params = GearParameters(source_file="test.stp")
+        params.gear_type = "spur"
+        params.hints = {"norms": ["DIN 867"], "optimization": []}
+        d = params.to_dict()
+        assert "hints" in d
+        assert "DIN 867" in d["hints"]["norms"]
+
+
 # ─────────────────────────────────────────────
-# Schrägungswinkel-Erkennung (NEU)
+# Schrägungswinkel v2 (3D-Kurven-Abtastung)
 # ─────────────────────────────────────────────
 
-from geometry_analyzer import detect_helix_angle
+class TestHelixAngleV2:
 
-class TestDetectHelixAngle:
+    def _make_helix_data(self, beta_deg: float, pitch_radius: float, n: int = 20):
+        """Erzeugt synthetische (avg_r, d_theta_dz)-Daten für einen gegebenen β-Winkel."""
+        tan_beta = math.tan(math.radians(beta_deg))
+        # dθ/dz = tan(β) / r_pitch
+        d_theta_dz = tan_beta / pitch_radius
+        return [(pitch_radius, d_theta_dz)] * n
 
-    def test_spur_gear_angles(self):
-        # Viele Kanten mit 0° (parallel zur Z-Achse), ein paar Stirnflächen nahe 90°
-        angles = [0.1, 0.0, 0.2, 0.0, 89.9, 90.0, 0.1]
-        result = detect_helix_angle(angles, 20.0)
-        assert result == 0.0  # Erwartet: Stirnrad
+    def test_spur_zero_helix(self):
+        # dθ/dz = 0 → β = 0°
+        data = [(25.0, 0.0)] * 20
+        result = detect_helix_angle_v2(data, pitch_radius=25.0)
+        assert result == 0.0
 
-    def test_helical_gear_angles(self):
-        # Cluster bei ca. 15° Schrägungswinkel
-        angles = [15.1, 14.9, 15.0, 15.2, 89.5, 90.0]
-        result = detect_helix_angle(angles, 20.0)
-        assert result == 15.0  # Durchschnitt der relevanten Winkel
+    def test_helical_15_deg(self):
+        data = self._make_helix_data(15.0, pitch_radius=27.0)
+        result = detect_helix_angle_v2(data, pitch_radius=27.0)
+        assert result is not None
+        assert abs(result - 15.0) < 1.0
 
-    def test_no_relevant_angles(self):
-        # Nur Stirnflächen (z.B. flache Scheibe)
-        angles = [89.0, 90.0, 89.5]
-        assert detect_helix_angle(angles, 20.0) is None
+    def test_helical_20_deg(self):
+        data = self._make_helix_data(20.0, pitch_radius=27.0)
+        result = detect_helix_angle_v2(data, pitch_radius=27.0)
+        assert result is not None
+        assert abs(result - 20.0) < 1.0
 
-    def test_empty_list(self):
-        assert detect_helix_angle([], 20.0) is None
+    def test_helical_30_deg(self):
+        data = self._make_helix_data(30.0, pitch_radius=33.0)
+        result = detect_helix_angle_v2(data, pitch_radius=33.0)
+        assert result is not None
+        assert abs(result - 30.0) < 1.0
+
+    def test_returns_none_for_empty_data(self):
+        assert detect_helix_angle_v2([], pitch_radius=25.0) is None
+
+    def test_returns_none_for_zero_pitch_radius(self):
+        data = [(25.0, 0.01)] * 5
+        assert detect_helix_angle_v2(data, pitch_radius=0.0) is None
+
+    def test_median_filters_outliers(self):
+        # 18 Kanten sagen β=20°, 2 Ausreißer (Fasen) sagen β=45°
+        good = self._make_helix_data(20.0, pitch_radius=27.0, n=18)
+        outliers = self._make_helix_data(45.0, pitch_radius=27.0, n=2)
+        result = detect_helix_angle_v2(good + outliers, pitch_radius=27.0)
+        assert result is not None
+        assert abs(result - 20.0) < 2.0
+
+
+# ─────────────────────────────────────────────
+# Zahnrad-Typ v2 (neue Erkennungslogik)
+# ─────────────────────────────────────────────
+
+class TestDetectGearTypeV2:
+
+    def test_worm_by_aspect_ratio_and_tori(self):
+        # Schnecke: b/d_a = 3.0, viele Tori pro Zylinder
+        cylinders = [(15.0, False)] * 3
+        tori = [0.5] * 30   # 10 Tori pro Zylinder
+        gear_type, _, _ = detect_gear_type(
+            cylinders, 5, [], tori,
+            outer_diameter_mm=30.0, face_width_mm=90.0, total_faces=50
+        )
+        assert gear_type == "worm"
+
+    def test_worm_wheel_by_tori_fraction(self):
+        # Schneckenrad: Tori-Anteil > 30% aller Faces, Aspektverhältnis < 1
+        cylinders = [(30.0, False)] * 5 + [(10.0, True)] * 2
+        tori = [0.4] * 25   # 25 von 80 Faces = 31%
+        gear_type, _, _ = detect_gear_type(
+            cylinders, 10, [], tori,
+            outer_diameter_mm=60.0, face_width_mm=30.0, total_faces=80
+        )
+        assert gear_type == "worm_wheel"
+
+    def test_bevel_with_fraction_check(self):
+        # Kegelrad: 15 signifikante Kegel-Faces bei 60 Gesamt-Faces = 25%
+        cones = [(math.radians(20), False)] * 15
+        gear_type, _, cone_angle = detect_gear_type(
+            [], 10, cones, [],
+            outer_diameter_mm=50.0, face_width_mm=20.0, total_faces=60
+        )
+        assert gear_type == "bevel"
+        assert abs(cone_angle - 20.0) < 1.0
+
+    def test_spur_chamfers_not_bevel(self):
+        # 4 kleine Fase-Kegel (45°) bei 200 Gesamt-Faces = 2% → KEIN Kegelrad
+        cylinders = [(22.0, False)] * 30 + [(10.0, True)]
+        cones = [(math.radians(45), False)] * 4   # typische Fase
+        gear_type, _, _ = detect_gear_type(
+            cylinders, 20, cones, [],
+            outer_diameter_mm=44.0, face_width_mm=20.0, total_faces=200
+        )
+        assert gear_type == "spur"
+
+    def test_internal_with_margin(self):
+        # 30 innere, 3 äußere Zylinder
+        cylinders = [(32.0, True)] * 30 + [(10.0, False)] * 3
+        gear_type, is_internal, _ = detect_gear_type(
+            cylinders, 10, [], [],
+            outer_diameter_mm=70.0, face_width_mm=20.0, total_faces=80
+        )
+        assert gear_type == "internal"
+        assert is_internal is True
+
+    def test_rack_no_cylinders(self):
+        gear_type, _, _ = detect_gear_type(
+            [], 50, [], [],
+            outer_diameter_mm=100.0, face_width_mm=20.0, total_faces=60
+        )
+        assert gear_type == "rack"
+
+
+# ─────────────────────────────────────────────
+# Hinweis-System (gear_hints.py)
+# ─────────────────────────────────────────────
+
+class TestGearHints:
+
+    def test_all_types_have_knowledge(self):
+        for gear_type in ("spur", "helical", "bevel", "worm", "worm_wheel", "internal", "rack"):
+            assert gear_type in GEAR_KNOWLEDGE, f"{gear_type} fehlt in GEAR_KNOWLEDGE"
+
+    def test_all_types_have_norms(self):
+        for gear_type, knowledge in GEAR_KNOWLEDGE.items():
+            assert len(knowledge.norms) > 0, f"{gear_type}: keine Normen definiert"
+
+    def test_spur_has_din_867(self):
+        assert "DIN 867" in GEAR_KNOWLEDGE["spur"].norms
+
+    def test_bevel_has_din_868(self):
+        assert "DIN 868" in GEAR_KNOWLEDGE["bevel"].norms
+
+    def test_worm_has_din_3975(self):
+        assert "DIN 3975" in GEAR_KNOWLEDGE["worm"].norms
+
+    def test_generate_hints_spur(self):
+        params = GearParameters(source_file="test.stp")
+        params.gear_type = "spur"
+        hints = generate_gear_hints(params)
+        assert "norms" in hints
+        assert "applications" in hints
+        assert "manufacturing" in hints
+        assert "quality_checks" in hints
+        assert "optimization" in hints
+        assert "DIN 867" in hints["norms"]
+
+    def test_generate_hints_unknown_type(self):
+        params = GearParameters(source_file="test.stp")
+        params.gear_type = "unknown_xyz"
+        hints = generate_gear_hints(params)
+        assert hints == {}
+
+    def test_optimization_undercut_warning(self):
+        # z < 17 → Unterschnitt-Warnung
+        params = GearParameters(source_file="test.stp")
+        params.gear_type = "spur"
+        params.num_teeth = 12
+        hints = generate_gear_hints(params)
+        opt_hints = [h["hint"] for h in hints["optimization"]]
+        assert any("Unterschnitt" in h for h in opt_hints)
+
+    def test_no_undercut_warning_for_large_z(self):
+        # z = 25 → kein Unterschnitt
+        params = GearParameters(source_file="test.stp")
+        params.gear_type = "spur"
+        params.num_teeth = 25
+        hints = generate_gear_hints(params)
+        opt_hints = [h["hint"] for h in hints["optimization"]]
+        assert not any("Unterschnitt" in h for h in opt_hints)
+
+    def test_helical_axialkraft_warning(self):
+        # β > 30° → Axialkraft-Warnung
+        params = GearParameters(source_file="test.stp")
+        params.gear_type = "helical"
+        params.helix_angle_deg = 35.0
+        hints = generate_gear_hints(params)
+        opt_hints = [h["hint"] for h in hints["optimization"]]
+        assert any("Axialkraft" in h for h in opt_hints)
