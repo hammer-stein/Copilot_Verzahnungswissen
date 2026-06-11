@@ -1,0 +1,35 @@
+/* Mock domain data for the Verzahnungs-Copilot UI kit. Not production data. */
+window.VC_DATA = {
+  chats: [
+    { id: 'c1', title: 'Werkstoffwahl einsatzgehärtete Stirnräder', when: 'Heute', active: true },
+    { id: 'c2', title: 'Profilverschiebung — Auslegung x-Faktor', when: 'Heute' },
+    { id: 'c3', title: 'Einfluss Schrägungswinkel auf Laufruhe', when: 'Gestern' },
+    { id: 'c4', title: 'Toleranzklassen ISO 1328 Vergleich', when: 'Gestern' },
+    { id: 'c5', title: 'Fräsparameter Wälzfräsen Modul 3', when: '2. Juni' },
+    { id: 'c6', title: 'Tragfähigkeitsnachweis nach DIN 3990', when: '28. Mai' },
+  ],
+  documents: [
+    { id: 'd1', name: 'DIN3990_Tragfaehigkeit.pdf', chunks: 142, status: 'ready' },
+    { id: 'd2', name: 'Werkstoffkunde_Verzahnung.pdf', chunks: 88, status: 'ready' },
+    { id: 'd3', name: 'Fraesparameter_Datenblatt.pdf', chunks: 54, status: 'ready' },
+    { id: 'd4', name: 'ISO1328_Toleranzen.pdf', chunks: 0, status: 'indexing' },
+  ],
+  activePart: { name: 'stirnrad_z34.stp', status: 'ready' },
+  knowledgeBase: { docs: 12480, status: 'ready' },
+  gear: {
+    verzahnungstyp: 'Stirnrad',
+    modul: '2,500',
+    zaehnezahl: '34',
+    eingriffswinkel: '20,0',
+    schraegungswinkel: '0,0',
+    profilverschiebung: '0,00',
+    teilkreis: '85,000',
+    kopfkreis: '90,000',
+    fusskreis: '78,750',
+    zahnbreite: '28,0',
+    werkstoff: '16MnCr5',
+    haerte: 'einsatzgehärtet',
+    qualitaet: '7',
+  },
+  formats: ['kurz', 'standard', 'ausführlich', 'stichpunkte', 'tabellarisch'],
+};

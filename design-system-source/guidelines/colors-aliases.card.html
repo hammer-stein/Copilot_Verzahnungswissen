@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x170" name="Surface & Text Aliases" subtitle="Semantic tokens components read from — swap by theme." -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;background:var(--surface-app);padding:16px;font-family:var(--font-sans)}
+  .panel{background:var(--surface-card);border:1px solid var(--border-default);border-radius:var(--radius-md);padding:14px 16px;box-shadow:var(--shadow-sm)}
+  .row{display:flex;align-items:center;gap:10px;padding:5px 0}
+  .dot{width:18px;height:18px;border-radius:var(--radius-xs);border:1px solid var(--border-default);flex:none}
+  .k{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);width:160px}
+  .v{font-size:12px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px}
+</style></head>
+<body>
+  <div class="panel">
+    <div class="cols">
+      <div class="row"><span class="dot" style="background:var(--surface-app)"></span><span class="k">--surface-app</span></div>
+      <div class="row"><span class="dot" style="background:var(--text-strong)"></span><span class="k">--text-strong</span></div>
+      <div class="row"><span class="dot" style="background:var(--surface-card)"></span><span class="k">--surface-card</span></div>
+      <div class="row"><span class="dot" style="background:var(--text-body)"></span><span class="k">--text-body</span></div>
+      <div class="row"><span class="dot" style="background:var(--surface-sunken)"></span><span class="k">--surface-sunken</span></div>
+      <div class="row"><span class="dot" style="background:var(--text-muted)"></span><span class="k">--text-muted</span></div>
+      <div class="row"><span class="dot" style="background:var(--accent)"></span><span class="k">--accent</span></div>
+      <div class="row"><span class="dot" style="background:var(--border-default)"></span><span class="k">--border-default</span></div>
+    </div>
+  </div>
+</body></html>

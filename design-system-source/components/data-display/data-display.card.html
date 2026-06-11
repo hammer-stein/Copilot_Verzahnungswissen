@@ -1,0 +1,61 @@
+<!-- @dsCard group="Components" viewport="700x320" name="Data Display — Badges, Card, Tabs, Status" subtitle="Badges, status dots, tabs, spinner and a card surface." -->
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body{margin:0;background:var(--surface-app);padding:20px;font-family:var(--font-sans)}
+  .stack{display:flex;flex-direction:column;gap:18px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .over{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);font-weight:600;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="../../ds-shim.js"></script>
+<script type="text/babel">
+  const { Badge, Card, Tabs, Spinner, StatusBadge } = window.VerzahnungsCopilotDesignSystem_c9990b;
+  function Demo(){
+    const [tab, setTab] = React.useState('zeichnung');
+    return (
+      <div className="stack">
+        <div>
+          <div className="over">Badges</div>
+          <div className="row">
+            <Badge variant="accent">Stirnrad</Badge>
+            <Badge variant="info">Geometrie</Badge>
+            <Badge variant="warning">Toleranz</Badge>
+            <Badge variant="danger">Außerhalb Spez.</Badge>
+            <Badge variant="success">Geprüft</Badge>
+            <Badge square variant="neutral">DIN 3960</Badge>
+            <Badge square variant="neutral">16MnCr5</Badge>
+          </div>
+        </div>
+        <div>
+          <div className="over">Dokument-Status</div>
+          <div className="row" style={{gap:20}}>
+            <StatusBadge status="ready" label="Bereit · 142 Chunks" />
+            <StatusBadge status="indexing" />
+            <StatusBadge status="error" />
+            <span className="row" style={{gap:8}}><Spinner/> <span style={{fontSize:13,color:'var(--text-muted)'}}>Antwort wird generiert…</span></span>
+          </div>
+        </div>
+        <div>
+          <div className="over">Tabs + Card</div>
+          <Tabs value={tab} onChange={setTab} items={[{id:'zeichnung',label:'Zeichnung'},{id:'parameter',label:'Parameter'},{id:'meta',label:'Metadaten'}]} />
+          <Card overline="Untersuchtes Bauteil" title="Stirnrad · Modul 2,5 · 34 Zähne" style={{marginTop:12}}>
+            <div style={{fontSize:14,color:'var(--text-body)'}}>Aktive Ansicht: <b>{tab}</b>. Inhalt erscheint hier, ohne den Chat-Kontext zu verlieren.</div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script>
+</body>
+</html>

@@ -32,6 +32,9 @@ cad_adapter:
 
 vector_store:
   implementation: "qdrant"
+  # path: "storage/qdrant"  # auskommentiert lassen für Server-Modus (Docker/Compose).
+  #                          # Gesetzt = eingebetteter On-Disk-Modus ohne Docker/Server (lokale Entwicklung).
+  #                          # Im Compose-Netz schaltet QDRANT_HOST automatisch auf den Server-Modus zurück.
   host: "localhost"
   port: 6333
   collection_name: "knowledge_base"

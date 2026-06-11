@@ -31,10 +31,31 @@ from app.core.types import DocumentInfo, EmbeddedChunk, SearchResult
 class QdrantStore:
     """Adapter zwischen dem RAG-System und der Qdrant-Vektordatenbank."""
 
-    def __init__(self, *, host: str, port: int, collection_name: str) -> None:
-        """Verbindet sich per HTTP mit Qdrant. Die Collection wird lazy beim ersten upsert() angelegt."""
-        self.client = QdrantClient(host=host, port=port)
+    def __init__(self, *, host: str, port: int, collection_name: str, path: Optional[str] = None) -> None:
+        """
+        Verbindet sich mit Qdrant. Ist `path` gesetzt, läuft Qdrant eingebettet (lokaler
+        On-Disk-Modus, kein Server/Docker nötig); andernfalls per HTTP über host/port.
+        Die Collection wird lazy beim ersten upsert() angelegt.
+        """
+        if path:
+            self.client = QdrantClient(path=path)  # eingebetteter On-Disk-Modus
+        else:
+            self.client = QdrantClient(host=host, port=port)
         self.collection_name = collection_name
+
+    def _collection_exists(self) -> bool:
+        """
+        True, wenn die Collection bereits angelegt wurde. Sie entsteht erst beim ersten upsert(),
+        daher müssen Lese-Operationen (search, list_documents) eine fehlende Collection tolerieren
+        und eine leere Wissensbasis als leeres Ergebnis behandeln statt zu scheitern.
+        """
+        try:
+            return self.client.collection_exists(self.collection_name)
+        except Exception:
+            try:
+                return any(c.name == self.collection_name for c in self.client.get_collections().collections)
+            except Exception:
+                return False
 
     def _ensure_collection(self, vector_size: int) -> None:
         """
@@ -117,6 +138,9 @@ class QdrantStore:
         query_points() ist die aktuelle API (Qdrant >= 1.10, ersetzt das veraltete search()).
         Hybrid-Search nutzt Qdrant für dichte Kandidaten und rerankt diese lokal mit Sparse-Scores.
         """
+        if not self._collection_exists():
+            return []  # leere Wissensbasis (noch nichts indexiert)
+
         qfilter = _dict_filter_to_qdrant(filter)
 
         response = self.client.query_points(
@@ -166,6 +190,9 @@ class QdrantStore:
         Qdrant hat kein natives GROUP BY – alle Punkte werden per scroll() seitenweise
         durchlaufen und nach doc_hash aggregiert.
         """
+        if not self._collection_exists():
+            return []  # noch nichts indexiert → leere Wissensbasis
+
         docs: dict[str, DocumentInfo] = {}
         offset = None  # Scroll-Cursor, None = Anfang
 

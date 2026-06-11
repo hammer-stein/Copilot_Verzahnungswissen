@@ -15,6 +15,18 @@ from app.core.utils import stable_json_dumps
 from app.implementations.ollama_client import OllamaClient
 
 
+# Übersetzt die Format-Auswahl aus dem Frontend in eine konkrete LLM-Anweisung,
+# die unter "AUSGABEFORMAT" in den Prompt eingesetzt wird.
+FORMAT_INSTRUCTIONS: dict[str, str] = {
+    "kurz": "Antworte knapp und präzise in 2–3 Sätzen. Nur das Wesentliche, keine Zwischenüberschriften.",
+    "standard": "Strukturierter Fließtext mit kurzen Absätzen, ca. 150–200 Wörter.",
+    "ausführlich": "Ausführliche Antwort mit Zwischenüberschriften und Begründungen, ca. 300–400 Wörter.",
+    "stichpunkte": "Antworte als kompakte Stichpunktliste: ein Aspekt pro Zeile, jede Zeile beginnt mit '- '.",
+    "tabellarisch": "Stelle die Antwort, wo sinnvoll, als Markdown-Tabelle dar; ergänze nur knappe Erläuterungen.",
+}
+DEFAULT_FORMAT = "standard"
+
+
 class OllamaAnswerGenerator:
     """Generiert Antworten auf Basis von Retriever-Chunks via LLM. Vollständig zustandslos."""
 
@@ -43,9 +55,11 @@ class OllamaAnswerGenerator:
         question: str,
         chunks: list[RetrievedChunk],
         cad_metadata: dict,
+        answer_format: str = DEFAULT_FORMAT,
     ) -> Answer:
         """
         Wandelt Chunks in einen [Q1]/[Q2]-Block um, fügt CAD-Kontext hinzu und ruft das LLM auf.
+        answer_format steuert den AUSGABEFORMAT-Abschnitt des Prompts (kurz/standard/ausführlich/…).
         Gibt ein Answer-Dict zurück mit Antworttext und source-Liste für das Frontend.
         """
 
@@ -73,11 +87,14 @@ class OllamaAnswerGenerator:
                 "text": rc.chunk.text,
             })
 
+        format_instruction = FORMAT_INSTRUCTIONS.get(answer_format, FORMAT_INSTRUCTIONS[DEFAULT_FORMAT])
+
         prompt = self.prompt_template.format(
             DOMAIN=self.domain_name,
             CAD_METADATA_JSON=stable_json_dumps(cad_metadata),  # deterministisches JSON für den Prompt
             CHUNKS_BLOCK="\n".join(chunk_lines).strip(),
             QUESTION=question,
+            FORMAT_INSTRUCTION=format_instruction,
         )
 
         answer_text = self.client.generate(

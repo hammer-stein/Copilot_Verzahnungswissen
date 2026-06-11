@@ -1,0 +1,54 @@
+<!-- @dsCard group="Components" viewport="700x340" name="Forms — Buttons, Inputs, Select" subtitle="Button variants & sizes, fields, select, textarea." -->
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body{margin:0;background:var(--surface-app);padding:20px;font-family:var(--font-sans)}
+  .stack{display:flex;flex-direction:column;gap:18px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .over{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);font-weight:600;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="../../ds-shim.js"></script>
+<script type="text/babel">
+  const { Button, IconButton, Input, Select, Textarea } = window.VerzahnungsCopilotDesignSystem_c9990b;
+  const Plus = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>);
+  function Demo(){
+    return (
+      <div className="stack">
+        <div>
+          <div className="over">Buttons</div>
+          <div className="row">
+            <Button variant="primary">Fragen stellen</Button>
+            <Button variant="secondary">Andere Werte würfeln</Button>
+            <Button variant="ghost">Abbrechen</Button>
+            <Button variant="danger">Entfernen</Button>
+            <Button variant="primary" disabled>Deaktiviert</Button>
+          </div>
+          <div className="row" style={{marginTop:10}}>
+            <Button size="sm" variant="secondary">Klein</Button>
+            <Button size="md" iconLeft={<Plus/>}>Weiteres Feld</Button>
+            <Button size="lg">Zufälliges Zahnrad generieren</Button>
+          </div>
+        </div>
+        <div className="grid">
+          <Input label="Modul (mm)" mono defaultValue="2.5" />
+          <Select label="Ausgabeformat" options={['kurz','standard','ausführlich','stichpunkte','tabellarisch']} defaultValue="standard" />
+        </div>
+        <Textarea label="Frage 1" hint="Bitte pro Feld nur eine Frage." defaultValue="Welche Werkstoffe eignen sich für einsatzgehärtete Stirnräder?" />
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script>
+</body>
+</html>

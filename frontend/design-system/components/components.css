@@ -1,0 +1,260 @@
+/* ============================================================
+   COMPONENT STYLES — Verzahnungs-Copilot
+   Class-based primitives consumed by the React components.
+   Shipped to consumers via styles.css. All values read tokens.
+   Prefix: vc-
+   ============================================================ */
+
+/* ---------------- Button ---------------- */
+.vc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  height: var(--control-height);
+  padding: 0 var(--space-5);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-standard),
+              border-color var(--dur-fast) var(--ease-standard),
+              color var(--dur-fast) var(--ease-standard);
+  user-select: none;
+}
+.vc-btn:focus-visible { box-shadow: var(--ring); }
+.vc-btn svg { width: 16px; height: 16px; flex: none; }
+
+.vc-btn--primary { background: var(--accent); color: var(--text-on-accent); }
+.vc-btn--primary:hover { background: var(--accent-hover); }
+.vc-btn--primary:active { background: var(--accent-active); }
+
+.vc-btn--secondary {
+  background: var(--surface-card);
+  color: var(--text-body);
+  border-color: var(--border-strong);
+}
+.vc-btn--secondary:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+.vc-btn--secondary:active { background: var(--surface-active); }
+
+.vc-btn--ghost { background: transparent; color: var(--text-body); }
+.vc-btn--ghost:hover { background: var(--surface-hover); }
+.vc-btn--ghost:active { background: var(--surface-active); }
+
+.vc-btn--danger { background: var(--danger); color: #fff; }
+.vc-btn--danger:hover { background: var(--red-600); }
+
+.vc-btn--sm { height: var(--control-height-sm); padding: 0 var(--space-4); font-size: var(--text-sm); }
+.vc-btn--lg { height: var(--control-height-lg); padding: 0 var(--space-7); font-size: var(--text-md); }
+
+.vc-btn:disabled, .vc-btn[aria-disabled="true"] {
+  opacity: 0.45; cursor: not-allowed; pointer-events: none;
+}
+
+/* ---------------- IconButton ---------------- */
+.vc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+.vc-icon-btn:hover { background: var(--surface-hover); color: var(--text-strong); }
+.vc-icon-btn:active { background: var(--surface-active); }
+.vc-icon-btn:focus-visible { box-shadow: var(--ring); }
+.vc-icon-btn svg { width: 18px; height: 18px; }
+.vc-icon-btn--sm { width: var(--control-height-sm); height: var(--control-height-sm); }
+.vc-icon-btn--sm svg { width: 16px; height: 16px; }
+.vc-icon-btn--active { background: var(--surface-active); color: var(--accent-text); }
+.vc-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------------- Input / Textarea ---------------- */
+.vc-field { display: flex; flex-direction: column; gap: var(--space-3); }
+.vc-label {
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-body);
+}
+.vc-hint { font-size: var(--text-xs); color: var(--text-muted); }
+.vc-input, .vc-textarea, .vc-select__el {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  color: var(--text-strong);
+  background: var(--surface-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-4);
+  height: var(--control-height);
+  width: 100%;
+  transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+}
+.vc-textarea { padding: var(--space-3) var(--space-4); height: auto; min-height: 72px; line-height: var(--leading-normal); resize: vertical; }
+.vc-input::placeholder, .vc-textarea::placeholder { color: var(--text-faint); }
+.vc-input:hover, .vc-textarea:hover, .vc-select__el:hover { border-color: var(--neutral-400); }
+.vc-input:focus, .vc-textarea:focus, .vc-select__el:focus {
+  outline: none; border-color: var(--border-focus); box-shadow: var(--ring);
+}
+.vc-input--mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.vc-input:disabled, .vc-textarea:disabled, .vc-select__el:disabled {
+  background: var(--surface-sunken); color: var(--text-faint); cursor: not-allowed;
+}
+.vc-input--invalid, .vc-textarea--invalid { border-color: var(--danger); }
+
+/* ---------------- Select ---------------- */
+.vc-select { position: relative; display: inline-flex; width: 100%; }
+.vc-select__el { appearance: none; padding-right: var(--space-9); cursor: pointer; }
+.vc-select__chev {
+  position: absolute; right: var(--space-4); top: 50%; transform: translateY(-50%);
+  pointer-events: none; color: var(--text-muted); width: 16px; height: 16px;
+}
+
+/* ---------------- Badge ---------------- */
+.vc-badge {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  height: 20px; padding: 0 var(--space-3);
+  font-size: var(--text-2xs); font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-wide);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.vc-badge svg { width: 12px; height: 12px; }
+.vc-badge--neutral { background: var(--surface-sunken); color: var(--text-muted); border-color: var(--border-default); }
+.vc-badge--accent  { background: var(--accent-soft); color: var(--accent-text); border-color: var(--citation-border); }
+.vc-badge--info    { background: var(--info-soft); color: var(--blue-600); }
+.vc-badge--warning { background: var(--warning-soft); color: var(--amber-600); }
+.vc-badge--danger  { background: var(--danger-soft); color: var(--red-600); }
+.vc-badge--success { background: var(--success-soft); color: var(--green-700); }
+.vc-badge--square  { border-radius: var(--radius-xs); font-family: var(--font-mono); letter-spacing: 0; }
+[data-theme="dark"] .vc-badge--info { color: var(--info); }
+[data-theme="dark"] .vc-badge--warning { color: var(--warning); }
+[data-theme="dark"] .vc-badge--danger { color: var(--danger); }
+[data-theme="dark"] .vc-badge--success { color: var(--accent-text); }
+
+/* ---------------- Status (dot + label) ---------------- */
+.vc-status { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
+.vc-status__dot { width: 8px; height: 8px; border-radius: var(--radius-pill); flex: none; }
+.vc-status--ready .vc-status__dot { background: var(--success); }
+.vc-status--indexing .vc-status__dot { background: var(--warning); animation: vc-pulse 1.4s var(--ease-standard) infinite; }
+.vc-status--error .vc-status__dot { background: var(--danger); }
+.vc-status--idle .vc-status__dot { background: var(--neutral-400); }
+@keyframes vc-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+@media (prefers-reduced-motion: reduce) { .vc-status--indexing .vc-status__dot { animation: none; } }
+
+/* ---------------- Spinner ---------------- */
+.vc-spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-pill);
+  animation: vc-spin 0.7s linear infinite;
+}
+.vc-spinner--lg { width: 24px; height: 24px; border-width: 2.5px; }
+@keyframes vc-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .vc-spinner { animation-duration: 2s; } }
+
+/* ---------------- Card ---------------- */
+.vc-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.vc-card--flat { box-shadow: none; }
+.vc-card__header {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.vc-card__title { font-size: var(--text-base); font-weight: var(--fw-semibold); color: var(--text-strong); }
+.vc-card__overline {
+  font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  color: var(--text-muted); font-weight: var(--fw-semibold);
+}
+.vc-card__body { padding: var(--space-5); }
+
+/* ---------------- Tabs ---------------- */
+.vc-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border-default); }
+.vc-tab {
+  appearance: none; background: none; border: none; cursor: pointer;
+  font-family: var(--font-sans); font-size: var(--text-sm); font-weight: var(--fw-medium);
+  color: var(--text-muted); padding: var(--space-3) var(--space-4);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
+}
+.vc-tab:hover { color: var(--text-strong); }
+.vc-tab--active { color: var(--accent-text); border-bottom-color: var(--accent); }
+.vc-tab:focus-visible { box-shadow: var(--ring); border-radius: var(--radius-xs); }
+
+/* ---------------- Citation (inline marker) ---------------- */
+.vc-cite {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-mono); font-size: 0.85em; font-weight: var(--fw-semibold);
+  color: var(--citation-text); background: var(--citation-bg);
+  border: 1px solid var(--citation-border); border-radius: var(--radius-xs);
+  padding: 0 4px; line-height: 1.4; vertical-align: baseline; cursor: pointer;
+  text-decoration: none; transition: background var(--dur-fast) var(--ease-standard);
+}
+.vc-cite:hover { background: var(--green-100); text-decoration: none; }
+
+/* ---------------- Source row ---------------- */
+.vc-source {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-size: var(--text-sm);
+}
+.vc-source__qid {
+  font-family: var(--font-mono); font-size: var(--text-xs); font-weight: var(--fw-semibold);
+  color: var(--citation-text); background: var(--citation-bg);
+  border: 1px solid var(--citation-border); border-radius: var(--radius-xs);
+  padding: 1px 5px; flex: none;
+}
+.vc-source__name { color: var(--text-body); font-weight: var(--fw-medium); }
+.vc-source__meta { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-xs); margin-left: auto; white-space: nowrap; }
+
+/* ---------------- Parameter table ---------------- */
+.vc-param-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.vc-param-table th {
+  text-align: left; font-size: var(--text-2xs); text-transform: uppercase;
+  letter-spacing: var(--tracking-caps); color: var(--text-muted); font-weight: var(--fw-semibold);
+  padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-default);
+}
+.vc-param-table td {
+  padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-body);
+}
+.vc-param-table tr:last-child td { border-bottom: none; }
+.vc-param-table .vc-param-table__key { color: var(--text-muted); }
+.vc-param-table .vc-param-table__val {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  color: var(--text-strong); text-align: right; font-weight: var(--fw-medium);
+}
+.vc-param-table .vc-param-table__unit { color: var(--text-muted); font-family: var(--font-mono); width: 1%; white-space: nowrap; }
+.vc-param-table tr:hover td { background: var(--surface-hover); }
+
+/* ---------------- Code block ---------------- */
+.vc-code {
+  font-family: var(--font-mono); font-size: var(--text-sm);
+  background: var(--surface-sunken); color: var(--text-body);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  padding: var(--space-4) var(--space-5); overflow-x: auto;
+  line-height: var(--leading-relaxed); white-space: pre; tab-size: 2;
+}
+.vc-code__caption {
+  font-family: var(--font-mono); font-size: var(--text-2xs); text-transform: uppercase;
+  letter-spacing: var(--tracking-caps); color: var(--text-muted);
+  padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-subtle);
+}

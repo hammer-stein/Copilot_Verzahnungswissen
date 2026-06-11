@@ -1,5 +1,6 @@
 fastapi>=0.110
 uvicorn[standard]>=0.29
+python-multipart>=0.0.9
 pydantic>=2.6
 typing-extensions>=4.8
 pyyaml>=6.0
@@ -12,8 +13,14 @@ pymupdf>=1.24
 qdrant-client>=1.9
 
 # Embeddings
-sentence-transformers>=3.0
-torch>=2.2
+# Plattformübergreifender, in sich kompatibler Pin-Satz:
+# Auf Intel-macOS (x86_64) ist torch nur bis 2.2.2 verfügbar; die neuesten
+# transformers/sentence-transformers verlangen aber torch>=2.4 und NumPy 2.x.
+# Diese Pins funktionieren auf Intel-/Apple-Silicon-macOS UND im Docker-Image (linux/amd64).
+numpy<2
+torch>=2.2,<2.3
+transformers>=4.40,<4.45
+sentence-transformers>=3.0,<3.1
 
 # Tests
 pytest>=8.0

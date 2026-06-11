@@ -65,10 +65,15 @@ class CADAdapterConfig(BaseModel):
 
 
 class VectorStoreConfig(BaseModel):
-    """Verbindungsparameter für die Qdrant-Vektordatenbank."""
+    """
+    Verbindungsparameter für die Qdrant-Vektordatenbank.
+    Ist `path` gesetzt, läuft Qdrant eingebettet (lokaler On-Disk-Modus, kein Docker/Server nötig);
+    andernfalls wird per host/port mit einem laufenden Qdrant-Server verbunden.
+    """
     implementation: Literal["qdrant"]
     host: str = "localhost"
     port: int = 6333
+    path: Optional[str] = None  # z.B. "storage/qdrant" → eingebetteter Modus ohne Server
     collection_name: str = "knowledge_base"
 
 
@@ -124,13 +129,23 @@ def load_config(path: Path) -> AppConfig:
     Pydantic wirft ValidationError mit klarer Fehlermeldung bei ungültigen Werten.
     Umgebungsvariablen überschreiben die Service-Adressen (für Docker Compose,
     wo Services über ihre Container-Namen statt localhost erreichbar sind).
+    Dieselbe config.yaml funktioniert dadurch lokal (eingebettetes Qdrant + CAD-Stub)
+    und im Compose-Netz (echter Qdrant-Server + cad_processor-Service):
+    Sind die Service-Env-Variablen gesetzt, wird automatisch auf den Server-/Service-Modus
+    umgeschaltet – auch wenn die Datei lokale Defaults (path, random_gear_stub) enthält.
     """
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
 
     if os.getenv("QDRANT_HOST"):
-        raw.setdefault("vector_store", {})["host"] = os.environ["QDRANT_HOST"]
+        vs = raw.setdefault("vector_store", {})
+        vs["host"] = os.environ["QDRANT_HOST"]
+        vs["path"] = None  # Server-Modus erzwingen: eingebetteten On-Disk-Modus deaktivieren
+        if os.getenv("QDRANT_PORT"):
+            vs["port"] = int(os.environ["QDRANT_PORT"])
     if os.getenv("CAD_PROCESSOR_URL"):
-        raw.setdefault("cad_adapter", {})["url"] = os.environ["CAD_PROCESSOR_URL"]
+        cad = raw.setdefault("cad_adapter", {})
+        cad["url"] = os.environ["CAD_PROCESSOR_URL"]
+        cad["implementation"] = "cad_processor_http"  # echten CAD-Service statt Stub nutzen
     if os.getenv("OLLAMA_URL"):
         raw.setdefault("metadata_extractor", {})["ollama_url"] = os.environ["OLLAMA_URL"]
 

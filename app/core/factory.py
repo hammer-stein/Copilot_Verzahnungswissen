@@ -21,16 +21,12 @@ from app.core.interfaces import (
     Retriever,
     VectorStore,
 )
-from app.implementations.answer_generator_ollama import OllamaAnswerGenerator
-from app.implementations.cad_processor_client import CadProcessorClient
-from app.implementations.cad_random_gear import RandomGearGenerator
-from app.implementations.chunker_recursive import RecursiveTextChunker
-from app.implementations.chunker_semantic import SemanticChunker
-from app.implementations.embedder_bge_m3 import BGEM3Embedder
-from app.implementations.metadata_extractor_ollama import OllamaMetadataExtractor
-from app.implementations.pdf_loader_pymupdf import PDFLoader
-from app.implementations.qdrant_store import QdrantStore
-from app.implementations.retriever_two_stage import TwoStageRetriever
+
+# Hinweis: Die konkreten Implementierungen werden bewusst NICHT hier auf Modulebene
+# importiert, sondern lazy in build_components(). So zieht ein Import von factory
+# (z.B. durch Tests oder ASGI-Tooling) nicht die schweren Abhängigkeiten
+# (sentence-transformers/torch, qdrant-client, pymupdf) nach sich, solange die
+# Komponenten nicht tatsächlich gebaut werden.
 
 
 class Components:
@@ -63,6 +59,18 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
     Die Reihenfolge folgt den Abhängigkeiten: Embedder vor Chunker und Retriever,
     da beide dieselbe Instanz teilen müssen.
     """
+
+    # Lazy-Importe: erst hier werden die schweren Abhängigkeiten geladen.
+    from app.implementations.answer_generator_ollama import OllamaAnswerGenerator
+    from app.implementations.cad_processor_client import CadProcessorClient
+    from app.implementations.cad_random_gear import RandomGearGenerator
+    from app.implementations.chunker_recursive import RecursiveTextChunker
+    from app.implementations.chunker_semantic import SemanticChunker
+    from app.implementations.embedder_bge_m3 import BGEM3Embedder
+    from app.implementations.metadata_extractor_ollama import OllamaMetadataExtractor
+    from app.implementations.pdf_loader_pymupdf import PDFLoader
+    from app.implementations.qdrant_store import QdrantStore
+    from app.implementations.retriever_two_stage import TwoStageRetriever
 
     # 1. PDF-Loader – keine Abhängigkeiten
     loader: DocumentLoader = PDFLoader()
@@ -128,6 +136,7 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
             host=config.vector_store.host,
             port=config.vector_store.port,
             collection_name=config.vector_store.collection_name,
+            path=config.vector_store.path,
         )
     else:
         raise ValueError(f"Unknown vector_store: {config.vector_store.implementation}")

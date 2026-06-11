@@ -1,0 +1,11 @@
+/* ============================================================
+   FONTS — Verzahnungs-Copilot
+   Technical, highly legible sans-serif (Inter) + engineering
+   monospace (JetBrains Mono) for parameters, code & formulas.
+
+   NOTE: Loaded from Google Fonts CDN. To fully self-host (offline
+   builds), download the woff2 files and swap these @import lines for
+   local @font-face rules. Flagged to the user.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');

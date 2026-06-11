@@ -24,7 +24,7 @@ cp config.example.yaml config.yaml
 docker compose up --build
 ```
 
-Frontend öffnen: `http://localhost:8000/`
+Web-GUI öffnen: `http://localhost:8000/` (leitet auf den Verzahnungs-Copilot weiter — Chat, CAD-/STEP-Upload, Quellenangaben, Ausgabeformat-Auswahl).
 
 > **Hinweis:** Ollama läuft auf dem Host. Der `app`-Service erreicht ihn via `http://host.docker.internal:11434` (wird automatisch über `OLLAMA_URL` gesetzt).
 
@@ -47,8 +47,13 @@ Vollständige Anleitung: [`cad_processor/SETUP_ANLEITUNG.md`](cad_processor/SETU
 
 ### RAG-System (Gruppe A)
 
+> **Python 3.11 erforderlich.** Auf Intel-macOS (x86_64) gibt es für neuere Python-Versionen
+> (3.13) kein `torch`-Wheel; die Pins in `requirements.txt` sind auf den 3.11-Stack abgestimmt
+> (entspricht dem Docker-Image). Falls der Default-Interpreter 3.12+ ist, eine 3.11-Umgebung
+> nutzen, z.B.: `conda create -n py311 python=3.11 && conda run -n py311 python -m venv .venv`.
+
 ```bash
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate        # Mac/Linux
 pip install -r requirements.txt
 
@@ -64,6 +69,12 @@ cp config.example.yaml config.yaml
 # RAG-API starten
 uvicorn app.api.main:app --reload --port 8000
 ```
+
+**Komplett ohne Docker (eingebettetes Qdrant):** In `config.yaml` unter `vector_store` die Zeile
+`path: "storage/qdrant"` setzen (Embedded-On-Disk-Modus, kein Qdrant-Server nötig) und bei
+`cad_adapter` `implementation: "random_gear_stub"` verwenden (kein CAD-Service nötig). Es bleibt
+nur **Ollama** als externe Abhängigkeit. Genau diese Defaults erzeugt ein frisch angelegtes
+`config.yaml` für die lokale Entwicklung.
 
 ---
 
@@ -82,7 +93,10 @@ uvicorn app.api.main:app --reload --port 8000
 | `POST` | `/upload` | PDF hochladen und indexieren |
 | `GET` | `/documents` | Indexierte Dokumente auflisten |
 | `DELETE` | `/documents/{doc_hash}` | Dokument löschen |
-| `POST` | `/ask` | `{ questions: string[], cad_metadata: object }` → Copilot-Antwort |
+| `POST` | `/ask` | `{ questions: string[], cad_metadata: object, format?: string }` → Copilot-Antwort |
+| `GET` | `/` | Leitet auf das Web-GUI weiter (`/ui/ui_kits/copilot/`) |
+
+`format` steuert das Ausgabeformat der Antwort: `kurz` · `standard` (Default) · `ausführlich` · `stichpunkte` · `tabellarisch`.
 
 ### Typischer Ablauf
 
@@ -129,6 +143,9 @@ Copilot_Verzahnungswissen/
 │   └── pipeline/               Indexierungs-Pipeline
 ├── schemas/                    Metadaten-Schema (gears.yaml)
 ├── frontend/                   Web-UI
+│   ├── index.html              Einfaches Fallback-Frontend
+│   └── design-system/          Verzahnungs-Copilot GUI (React, unter /ui ausgeliefert) — nur Laufzeit-Dateien
+├── design-system-source/       Designer-Quellen/Showcase des Design-Systems (Komponenten-.jsx, guidelines, preview) — nicht zur Laufzeit geladen
 ├── prompts/                    LLM-Prompt-Templates
 ├── docs/                       Dokumentation
 ├── Dockerfile                  Root-Dockerfile (RAG-System)

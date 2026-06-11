@@ -1,0 +1,31 @@
+# Virtuelle Umgebungen & Python-Artefakte
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+
+# Git & IDE
+.git/
+.gitignore
+.idea/
+.vscode/
+.claude/
+
+# Lokale Laufzeitdaten (werden im Container neu erzeugt / per Volume gemountet)
+storage/
+logs/
+config.yaml
+
+# Nicht für das App-Image benötigt (cad_processor wird separat gebaut)
+cad_processor/
+docs/
+tests/
+test_verzahnung/
+design-system-source/   # Designer-Quellen/Showcase des Design-Systems (nur die gebündelte Runtime unter frontend/design-system/ wird ausgeliefert)
+
+# Sonstiges
+*.pdf
+.DS_Store

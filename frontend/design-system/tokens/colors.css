@@ -1,0 +1,147 @@
+/* ============================================================
+   COLORS — Verzahnungs-Copilot Design System
+   Oriented on the KIT corporate design: clean whitespace,
+   anthracite text, KIT green (#009682) as the single accent.
+   ============================================================ */
+
+:root {
+  /* ---- Brand: KIT Green ramp ---- */
+  --green-50:  #e0f5f1;
+  --green-100: #b8e9e0;
+  --green-200: #82d6c8;
+  --green-300: #4dc4b2;
+  --green-400: #1fac97;
+  --green-500: #009682;  /* KIT-Grün — primary */
+  --green-600: #007e6e;
+  --green-700: #00665a;
+  --green-800: #014e46;
+  --green-900: #033b35;
+
+  /* ---- Neutrals: anthracite ramp (slightly cool) ---- */
+  --neutral-0:   #ffffff;
+  --neutral-25:  #f8faf9;
+  --neutral-50:  #f1f4f3;
+  --neutral-100: #e7ebea;
+  --neutral-200: #d6dcdb;
+  --neutral-300: #bcc4c3;
+  --neutral-400: #939d9d;
+  --neutral-500: #6c7676;
+  --neutral-600: #4e5757;
+  --neutral-700: #373e3e;
+  --neutral-800: #232829;
+  --neutral-900: #161a1b;  /* anthracite */
+  --neutral-950: #0c0f0f;
+
+  /* ---- Semantic accents (technical, restrained) ---- */
+  --blue-500:   #2f6fb0;   /* info / data / links */
+  --blue-600:   #265c93;
+  --blue-50:    #e7f0f8;
+  --amber-500:  #c8820e;   /* warning / tolerance */
+  --amber-600:  #a66a08;
+  --amber-50:   #fbf2df;
+  --red-500:    #c63a2e;   /* error / out-of-spec */
+  --red-600:    #a82e24;
+  --red-50:     #fbe9e7;
+
+  /* ============================================================
+     SEMANTIC ALIASES — light mode (default)
+     ============================================================ */
+
+  /* Surfaces */
+  --surface-app:      var(--neutral-50);   /* app background */
+  --surface-card:     var(--neutral-0);    /* panels, cards, chat */
+  --surface-sunken:   var(--neutral-25);   /* code blocks, wells */
+  --surface-sidebar:  var(--neutral-0);
+  --surface-raised:   var(--neutral-0);
+  --surface-hover:    var(--neutral-50);
+  --surface-active:   var(--green-50);
+  --surface-inverse:  var(--neutral-900);
+
+  /* Text */
+  --text-strong:   var(--neutral-900);   /* headings */
+  --text-body:     var(--neutral-800);   /* paragraphs */
+  --text-muted:    var(--neutral-500);   /* captions, meta */
+  --text-faint:    var(--neutral-400);   /* placeholders */
+  --text-on-accent:#ffffff;
+  --text-link:     var(--green-700);
+  --text-inverse:  var(--neutral-25);
+
+  /* Borders / lines */
+  --border-subtle: var(--neutral-100);
+  --border-default:var(--neutral-200);
+  --border-strong: var(--neutral-300);
+  --border-focus:  var(--green-500);
+
+  /* Accent (brand) */
+  --accent:        var(--green-500);
+  --accent-hover:  var(--green-600);
+  --accent-active: var(--green-700);
+  --accent-soft:   var(--green-50);
+  --accent-text:   var(--green-700);
+
+  /* Semantic feedback */
+  --info:      var(--blue-500);
+  --info-soft: var(--blue-50);
+  --warning:   var(--amber-500);
+  --warning-soft: var(--amber-50);
+  --danger:    var(--red-500);
+  --danger-soft:  var(--red-50);
+  --success:   var(--green-500);
+  --success-soft: var(--green-50);
+
+  /* Citation / source highlight */
+  --citation-bg:     var(--green-50);
+  --citation-text:   var(--green-700);
+  --citation-border: var(--green-200);
+
+  /* Focus ring */
+  --ring: 0 0 0 3px color-mix(in srgb, var(--green-500) 35%, transparent);
+}
+
+/* ============================================================
+   DARK MODE — high-contrast, for monitors in labs / workshops
+   ============================================================ */
+[data-theme="dark"] {
+  --surface-app:      #0d1110;
+  --surface-card:     #161b1a;
+  --surface-sunken:   #111615;
+  --surface-sidebar:  #111514;
+  --surface-raised:   #1d2322;
+  --surface-hover:    #1f2625;
+  --surface-active:   #0c3a33;
+  --surface-inverse:  var(--neutral-50);
+
+  --text-strong:   #f3f6f5;
+  --text-body:     #d8dedc;
+  --text-muted:    #8b9593;
+  --text-faint:    #5c6664;
+  --text-on-accent:#04221d;
+  --text-link:     var(--green-300);
+  --text-inverse:  var(--neutral-900);
+
+  --border-subtle: #232a29;
+  --border-default:#2c3433;
+  --border-strong: #3c4543;
+  --border-focus:  var(--green-400);
+
+  --accent:        var(--green-400);
+  --accent-hover:  var(--green-300);
+  --accent-active: var(--green-200);
+  --accent-soft:   #0c322c;
+  --accent-text:   var(--green-300);
+
+  --info:      #5b9bd8;
+  --info-soft: #112634;
+  --warning:   #e0a93b;
+  --warning-soft: #2e2410;
+  --danger:    #e06457;
+  --danger-soft:  #321613;
+  --success:   var(--green-400);
+  --success-soft: #0c322c;
+
+  --citation-bg:     #0c322c;
+  --citation-text:   var(--green-300);
+  --citation-border: #14524a;
+
+  --ring: 0 0 0 3px color-mix(in srgb, var(--green-400) 40%, transparent);
+}

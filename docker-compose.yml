@@ -20,11 +20,22 @@ services:
       - qdrant
       - cad_processor
     environment:
+      # Diese Variablen schalten die (lokal eingebettete) config.yaml automatisch auf
+      # den Compose-Modus: echter Qdrant-Server statt On-Disk, echter CAD-Service statt Stub.
       - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
       - CAD_PROCESSOR_URL=http://cad_processor:8001
+      # Ollama läuft auf dem Host (Modelle sind groß) und wird über host.docker.internal erreicht.
       - OLLAMA_URL=http://host.docker.internal:11434
+    extra_hosts:
+      # Damit host.docker.internal auch unter Linux auf den Host zeigt (unter macOS/Windows nativ).
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+      - hf_cache:/app/.cache/huggingface   # BGE-M3-Modell über Neustarts hinweg cachen
+      - ./storage:/app/storage             # hochgeladene PDFs/STEP-Dateien persistieren
+      - ./logs:/app/logs                   # Query-Logs auf dem Host einsehbar
 
 volumes:
   qdrant_data:
+  hf_cache:

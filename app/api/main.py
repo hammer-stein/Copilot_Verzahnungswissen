@@ -18,7 +18,8 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.core.config import load_config
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 class AskRequest(BaseModel):
     questions: list[str] = Field(min_length=1)
     cad_metadata: dict[str, Any] = Field(default_factory=dict)
+    format: str = "standard"  # Ausgabeformat: kurz | standard | ausführlich | stichpunkte | tabellarisch
 
 
 class AskResponse(BaseModel):
@@ -86,9 +88,19 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
     logs_dir = BASE_DIR / "logs" / "queries"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
+    # Design-System-GUI als statische Dateien einhängen. Die Copilot-App liegt unter
+    # /ui/ui_kits/copilot/ und nutzt relative Pfade (../../styles.css, _ds_bundle.js …),
+    # die so korrekt auf frontend/design-system/ aufgelöst werden.
+    design_system_dir = BASE_DIR / "frontend" / "design-system"
+    COPILOT_APP_PATH = "/ui/ui_kits/copilot/"
+    if design_system_dir.exists():
+        app.mount("/ui", StaticFiles(directory=design_system_dir, html=True), name="ui")
+
     @app.get("/")
     def root():
-        """Liefert das Frontend (index.html) oder einen Status-Response."""
+        """Leitet auf das Design-System-GUI weiter (oder liefert das alte Frontend als Fallback)."""
+        if design_system_dir.exists():
+            return RedirectResponse(url=COPILOT_APP_PATH)
         frontend = BASE_DIR / "frontend" / "index.html"
         if frontend.exists():
             return FileResponse(frontend)
@@ -163,7 +175,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         finally:
             dest.unlink(missing_ok=True)  # STEP-Datei nach Analyse wieder löschen
 
-    async def _answer_one(question: str, cad_metadata: dict[str, Any]) -> Answer:
+    async def _answer_one(question: str, cad_metadata: dict[str, Any], answer_format: str) -> Answer:
         """Hilfsfunktion: führt Retrieval und Antwortgenerierung für eine einzelne Frage aus."""
         chunks = await asyncio.to_thread(components.retriever.retrieve, question, cad_metadata)
         return await asyncio.to_thread(
@@ -171,6 +183,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
             question=question,
             chunks=chunks,
             cad_metadata=cad_metadata,
+            answer_format=answer_format,
         )
 
     @app.post("/ask", response_model=AskResponse)
@@ -185,8 +198,9 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
             raise HTTPException(status_code=400, detail="No questions provided.")
 
         cad = req.cad_metadata or {}
+        answer_format = req.format or "standard"
 
-        tasks = [_answer_one(q, cad) for q in questions]
+        tasks = [_answer_one(q, cad, answer_format) for q in questions]
         try:
             answers = await asyncio.gather(*tasks)  # alle Fragen parallel verarbeiten
         except Exception as e:
@@ -200,6 +214,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
             stable_json_dumps({
                 "questions": questions,
                 "cad_metadata": cad,
+                "format": answer_format,
                 "answers": answers,
                 "models": {
                     "embedder": config.embedder.model_name,

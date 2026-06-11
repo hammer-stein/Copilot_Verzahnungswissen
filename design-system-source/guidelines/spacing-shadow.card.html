@@ -1,0 +1,15 @@
+<!-- @dsCard group="Spacing" viewport="700x150" name="Elevation / Shadows" subtitle="Tight, low-spread. Only for raised surfaces." -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;background:var(--surface-app);padding:24px 22px;font-family:var(--font-sans);display:flex;gap:26px;align-items:center}
+  .item{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .box{width:96px;height:56px;background:var(--surface-card);border:1px solid var(--border-subtle);border-radius:var(--radius-md)}
+  .lbl{font-family:var(--font-mono);font-size:10px;color:var(--text-muted)}
+</style></head>
+<body>
+  <div class="item"><div class="box" style="box-shadow:var(--shadow-xs)"></div><span class="lbl">xs</span></div>
+  <div class="item"><div class="box" style="box-shadow:var(--shadow-sm)"></div><span class="lbl">sm · cards</span></div>
+  <div class="item"><div class="box" style="box-shadow:var(--shadow-md)"></div><span class="lbl">md · menus</span></div>
+  <div class="item"><div class="box" style="box-shadow:var(--shadow-lg)"></div><span class="lbl">lg · dialog</span></div>
+  <div class="item"><div class="box" style="box-shadow:var(--shadow-overlay)"></div><span class="lbl">overlay</span></div>
+</body></html>

@@ -1,0 +1,16 @@
+<!-- @dsCard group="Spacing" viewport="700x140" name="Radii" subtitle="Crisp. 4px controls, 6px panels, max 8px — engineering exactness." -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;background:var(--surface-card);padding:18px 22px;font-family:var(--font-sans);display:flex;gap:22px;align-items:flex-end}
+  .item{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .box{width:64px;height:48px;background:var(--accent-soft);border:1.5px solid var(--accent)}
+  .lbl{font-family:var(--font-mono);font-size:10px;color:var(--text-muted)}
+  .lbl b{color:var(--text-strong);display:block;font-family:var(--font-sans)}
+</style></head>
+<body>
+  <div class="item"><div class="box" style="border-radius:var(--radius-xs)"></div><span class="lbl"><b>xs</b>2px</span></div>
+  <div class="item"><div class="box" style="border-radius:var(--radius-sm)"></div><span class="lbl"><b>sm</b>4px · controls</span></div>
+  <div class="item"><div class="box" style="border-radius:var(--radius-md)"></div><span class="lbl"><b>md</b>6px · cards</span></div>
+  <div class="item"><div class="box" style="border-radius:var(--radius-lg)"></div><span class="lbl"><b>lg</b>8px</span></div>
+  <div class="item"><div class="box" style="border-radius:var(--radius-pill);width:80px"></div><span class="lbl"><b>pill</b>badges</span></div>
+</body></html>

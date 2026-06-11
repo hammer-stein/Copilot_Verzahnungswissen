@@ -18,6 +18,6 @@ FRAGE:
 {QUESTION}
 
 AUSGABEFORMAT:
-Strukturiert mit Zwischenüberschriften, ca. 200 Wörter.
+{FORMAT_INSTRUCTION}
 
 ANTWORT:

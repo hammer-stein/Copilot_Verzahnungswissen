@@ -87,6 +87,7 @@ class AnswerGenerator(Protocol):
         question: str,
         chunks: list[RetrievedChunk],
         cad_metadata: dict,
+        answer_format: str = "standard",
     ) -> Answer: ...
 
 
