@@ -1,13 +1,24 @@
 # KI-Copilot für Verzahnungswissen
 
-Pipeline: **CAD-Datei → Parameter-JSON → RAG-Copilot → Antwort**
+Pipeline: **CAD-Datei → Parameter-JSON → RAG-Copilot (Retrieval + CAD-Kontext) → Antwort**
 
 ```
 cad_processor (Port 8001)   ← STEP-Datei → GearParameters JSON (PythonOCC)
-        ↓ JSON (gemappte Metadaten)
+        ↓ volles GearParameters-JSON
 RAG-System    (Port 8000)   ← Wissensbasis (PDFs) + Bauteilparameter → Copilot-Antworten
 Qdrant        (Port 6333)   ← Vektordatenbank
 ```
+
+### Anfrage-Fluss pro Frage (CAD-aware RAG)
+
+```
+1. HybridRetriever       Nutzerfrage wird embedded → Dense + lexikalische Sparse-Suche in Qdrant
+2. AnswerGenerator (LLM) beantwortet die Frage aus den gefundenen Chunks + dem vollen CAD-JSON
+```
+
+Das Retrieval arbeitet **ausschließlich mit der Nutzerfrage**. Das CAD-JSON fließt
+erst in der Antwortstufe als Bauteilkontext ein — so beeinflusst es die Antwort,
+ohne das Retrieval auf die CAD-Parameter zu verengen.
 
 ---
 
@@ -78,6 +89,22 @@ nur **Ollama** als externe Abhängigkeit. Genau diese Defaults erzeugt ein frisc
 
 ---
 
+## CAD-Schalter: synthetische Testdaten vs. echte STEP-Analyse
+
+In `config.yaml` steuert `cad_adapter.implementation`, woher die CAD-Daten kommen:
+
+| Wert | Verhalten |
+|---|---|
+| `synthetic_json` | `/cad/analyze` liefert synthetische Testdatensätze aus `test_verzahnung/cad_testdaten/` — kein cad_processor-Service nötig |
+| `cad_processor_http` | STEP-Dateien werden an den cad_processor (Port 8001) geschickt und echt analysiert |
+
+`/cad/random` und `/cad/examples` nutzen immer die synthetischen Datensätze.
+Die 10 Testdatensätze (`gear_01.json` … `gear_10.json`) sind geometrisch konsistent
+nach DIN 3960 und im identischen GearParameters-Format wie die echte STEP-Analyse.
+Neu generieren: `python test_verzahnung/cad_testdaten/generate_testdata.py`
+
+---
+
 ## API-Endpunkte
 
 ### CAD-Prozessor (Port 8001)
@@ -88,8 +115,10 @@ nur **Ollama** als externe Abhängigkeit. Genau diese Defaults erzeugt ein frisc
 ### RAG-System (Port 8000)
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
-| `POST` | `/cad/analyze` | STEP/STP-Datei → gemappte CAD-Metadaten (direkt für `/ask` verwendbar) |
-| `GET` | `/cad/random` | Zufälliges Zahnrad (Demo/Test, kein CAD-Service nötig) |
+| `POST` | `/cad/analyze` | STEP/STP-Datei → GearParameters-JSON (je nach Schalter echt oder synthetisch) |
+| `GET` | `/cad/random` | Zufälliger synthetischer Testdatensatz |
+| `GET` | `/cad/examples` | Liste der synthetischen Testdatensätze |
+| `GET` | `/cad/examples/{name}` | Bestimmten Testdatensatz laden |
 | `POST` | `/upload` | PDF hochladen und indexieren |
 | `GET` | `/documents` | Indexierte Dokumente auflisten |
 | `DELETE` | `/documents/{doc_hash}` | Dokument löschen |
@@ -102,26 +131,26 @@ nur **Ollama** als externe Abhängigkeit. Genau diese Defaults erzeugt ein frisc
 
 ```
 1. POST /cad/analyze   (STEP-Datei hochladen)
-        → { "verzahnungstyp": "Stirnrad", "modul": 2.5, ... }
+        → volles GearParameters-JSON { "gear_type": "helical", "tooth_profile": {...}, ... }
 
-2. POST /ask           (Fragen + CAD-Metadaten)
-   Body: { "questions": ["Welche Toleranz gilt?"], "cad_metadata": { ... } }
-        → Antwort mit Quellenangaben
+2. POST /ask           (Fragen + CAD-JSON)
+   Body: { "questions": ["Welches Fertigungsverfahren ist geeignet?"], "cad_metadata": { ... } }
+        → pro Frage: Retrieval auf der Nutzerfrage + Antwort mit Quellen,
+          generiert aus den Chunks und dem CAD-JSON als Bauteilkontext
 ```
 
 ---
 
-## JSON-Bridge: cad_processor → RAG
+## Evaluation
 
-Der `CadProcessorClient` (`app/implementations/cad_processor_client.py`) mappt die englischen GearParameters-Felder des cad_processors auf die deutschen Feldnamen des RAG-Schemas (`schemas/gears.yaml`):
+`test_verzahnung/evaluation.ipynb` misst die Retrieval-Qualität (MRR / Hit@k):
 
-| cad_processor | RAG-Schema | Funktion |
-|---|---|---|
-| `gear_type` | `verzahnungstyp` | Stage-1-Filter im Retriever |
-| `tooth_profile.module_mm` | `modul` | Stage-1-Filter (Range) |
-| `tooth_profile.num_teeth` | `zaehnezahl` | Kontext |
-| `basic_geometry.*` | `teilkreis-/kopf-/fusskreisdurchmesser`, `zahnbreite` | Kontext |
-| `material_context.material` | `werkstoff` | Kontext |
+- **Block 1**: PDFs laden, Evaluationsset (Gold-Fragen je Chunk) erzeugen/laden
+- **Block 2**: Chunking → Hybrid-Retrieval auf der Nutzerfrage → MRR
+
+> Das Retrieval nutzt ausschließlich die Nutzerfrage; das CAD-JSON beeinflusst
+> nur die Antwortgenerierung und damit nicht den MRR. Die Evaluation misst daher
+> reine Retrieval-Qualität.
 
 ---
 
@@ -132,21 +161,23 @@ Copilot_Verzahnungswissen/
 ├── cad_processor/              ← CAD-Prozessor (Gruppe B)
 │   ├── src/
 │   │   ├── step_parser.py      STEP-Datei einlesen + GearParameters extrahieren
-│   │   ├── output_schema.py    GearParameters Datenklasse
+│   │   ├── output_schema.py    GearParameters Datenklasse (JSON-Schnittstelle)
 │   │   └── main.py             FastAPI (Port 8001)
 │   ├── Dockerfile              conda/miniconda-basiertes Image
 │   └── environment.yml
 ├── app/                        ← RAG-System (Gruppe A)
 │   ├── api/main.py             FastAPI (Port 8000)
 │   ├── core/                   Config, Factory, Interfaces
-│   ├── implementations/        Konkrete Implementierungen
+│   ├── implementations/        Embedder, Chunker, HybridRetriever, AnswerGenerator, ...
 │   └── pipeline/               Indexierungs-Pipeline
-├── schemas/                    Metadaten-Schema (gears.yaml)
 ├── frontend/                   Web-UI
 │   ├── index.html              Einfaches Fallback-Frontend
 │   └── design-system/          Verzahnungs-Copilot GUI (React, unter /ui ausgeliefert) — nur Laufzeit-Dateien
 ├── design-system-source/       Designer-Quellen/Showcase des Design-Systems (Komponenten-.jsx, guidelines, preview) — nicht zur Laufzeit geladen
-├── prompts/                    LLM-Prompt-Templates
+├── prompts/                    LLM-Prompt-Template (Antwortgenerierung)
+├── test_verzahnung/
+│   ├── cad_testdaten/          10 synthetische GearParameters-JSONs + Generator
+│   └── evaluation.ipynb        Retrieval-Evaluation (MRR)
 ├── docs/                       Dokumentation
 ├── Dockerfile                  Root-Dockerfile (RAG-System)
 ├── docker-compose.yml          Alle drei Services
@@ -162,3 +193,5 @@ Copilot_Verzahnungswissen/
 - Quellen werden pro Antwort als `[Q1]..` referenziert.
 - `config.yaml` wird nie ins Git eingecheckt (enthält ggf. lokale Pfade/Ports).
 - Im Docker-Compose-Netz: Services kommunizieren über Container-Namen (`qdrant`, `cad_processor`).
+- Hybrid-Retrieval benötigt `embedder.use_sparse: true`; nach Umstellung müssen
+  bestehende Dokumente neu indexiert werden (alte Qdrant-Punkte haben keine Sparse-Vektoren).

@@ -2,8 +2,13 @@
 api/main.py – FastAPI-Anwendung mit allen HTTP-Endpunkten.
 
 Einstiegspunkt des Servers: create_app() lädt die Konfiguration, baut alle
-Komponenten auf und registriert die Endpunkte /upload, /documents, /ask, /cad/random.
-Der /ask-Endpunkt verarbeitet mehrere Fragen parallel via asyncio.gather().
+Komponenten auf und registriert die Endpunkte /upload, /documents, /ask,
+/cad/analyze, /cad/random, /cad/examples.
+
+Anfrage-Fluss pro Frage (CAD-aware RAG):
+  1. HybridRetriever sucht mit der Originalfrage in Qdrant
+  2. AnswerGenerator beantwortet die Frage aus den Chunks + dem vollen CAD-JSON
+     (das CAD-JSON fließt erst in der Antwortstufe ein, nicht ins Retrieval)
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ import asyncio
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -34,8 +39,8 @@ logger = logging.getLogger(__name__)
 # Pydantic-Modelle auf Modul-Ebene (nicht in create_app) – FastAPI-Anforderung für korrekte Validierung.
 class AskRequest(BaseModel):
     questions: list[str] = Field(min_length=1)
-    cad_metadata: dict[str, Any] = Field(default_factory=dict)
-    format: str = "standard"  # Ausgabeformat: kurz | standard | ausführlich | stichpunkte | tabellarisch
+    cad_metadata: dict[str, Any] = Field(default_factory=dict)  # volles GearParameters-JSON
+    format: Optional[str] = None  # "kurz" | "standard" | "ausführlich" | "stichpunkte" | "tabellarisch"
 
 
 class AskResponse(BaseModel):
@@ -52,6 +57,10 @@ def _setup_logging() -> None:
         level=os.getenv("LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+
+
+def _utc_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
 def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
@@ -71,12 +80,10 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         loader=components.loader,
         chunker=components.chunker,
         embedder=components.embedder,
-        metadata_extractor=components.metadata_extractor,
         store=components.vector_store,
-        schema_path=BASE_DIR / config.domain.schema_path,
     )
 
-    app = FastAPI(title="Modular RAG System", version="0.1.0")
+    app = FastAPI(title="Modular RAG System", version="0.2.0")
 
     # CORS: alle Origins erlaubt für lokale Entwicklung
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -116,7 +123,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
             raise HTTPException(status_code=400, detail="Only PDF upload supported.")
 
         # Zeitstempel + UUID im Dateinamen verhindert Kollisionen bei gleichzeitigen Uploads
-        tmp_name = f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}{Path(file.filename).suffix}"
+        tmp_name = f"{_utc_stamp()}_{uuid.uuid4().hex}{Path(file.filename).suffix}"
         dest = uploads_dir / tmp_name
 
         content = await file.read()
@@ -147,23 +154,41 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    @app.get("/cad/examples")
+    async def list_cad_examples():
+        """Listet die verfügbaren synthetischen CAD-Testdatensätze (Dateinamen)."""
+        files = await asyncio.to_thread(components.synthetic_cad_adapter.list_files)
+        return {"files": [f.name for f in files]}
+
+    @app.get("/cad/examples/{name}")
+    async def get_cad_example(name: str):
+        """Liefert einen bestimmten synthetischen CAD-Testdatensatz."""
+        files = {f.name: f for f in components.synthetic_cad_adapter.list_files()}
+        if name not in files:
+            raise HTTPException(status_code=404, detail=f"Unknown CAD example: {name}")
+        return await asyncio.to_thread(components.synthetic_cad_adapter.load_file, files[name])
+
     @app.get("/cad/random")
     async def random_cad():
-        """Liefert zufällige CAD-Metadaten vom RandomGearGenerator (Demo/Test)."""
-        return await asyncio.to_thread(components.cad_adapter.extract, None)
+        """Liefert einen zufälligen synthetischen CAD-Testdatensatz (Demo/Test)."""
+        try:
+            return await asyncio.to_thread(components.synthetic_cad_adapter.extract, None)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
     @app.post("/cad/analyze")
     async def analyze_cad(file: UploadFile = File(...)):
         """
-        Nimmt eine STEP-Datei entgegen, leitet sie an den CAD-Adapter weiter
-        (CadProcessorClient → cad_processor-Service) und gibt die gemappten
-        CAD-Metadaten zurück – direkt als cad_metadata für /ask verwendbar.
+        Nimmt eine STEP-Datei entgegen und leitet sie an den konfigurierten CAD-Adapter
+        weiter. Je nach Schalter (cad_adapter.implementation) wird die Datei echt vom
+        cad_processor analysiert oder ein synthetischer Testdatensatz geliefert.
+        Das Ergebnis ist direkt als cad_metadata für /ask verwendbar.
         """
         suffix = Path(file.filename).suffix.lower()
         if suffix not in (".step", ".stp"):
             raise HTTPException(status_code=400, detail="Only .step/.stp upload supported.")
 
-        tmp_name = f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}{suffix}"
+        tmp_name = f"{_utc_stamp()}_{uuid.uuid4().hex}{suffix}"
         dest = uploads_dir / tmp_name
         dest.write_bytes(await file.read())
 
@@ -175,14 +200,18 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         finally:
             dest.unlink(missing_ok=True)  # STEP-Datei nach Analyse wieder löschen
 
-    async def _answer_one(question: str, cad_metadata: dict[str, Any], answer_format: str) -> Answer:
-        """Hilfsfunktion: führt Retrieval und Antwortgenerierung für eine einzelne Frage aus."""
-        chunks = await asyncio.to_thread(components.retriever.retrieve, question, cad_metadata)
+    async def _answer_one(question: str, cad_json: dict[str, Any], answer_format: Optional[str]) -> Answer:
+        """
+        Pipeline für eine einzelne Frage: Retrieval (Originalfrage) → Antwortgenerierung.
+        Das CAD-JSON fließt erst in der Antwortstufe ein – das Retrieval arbeitet
+        ausschließlich mit der Nutzerfrage.
+        """
+        chunks = await asyncio.to_thread(components.retriever.retrieve, question)
         return await asyncio.to_thread(
             components.answer_generator.generate,
             question=question,
             chunks=chunks,
-            cad_metadata=cad_metadata,
+            cad_metadata=cad_json,
             answer_format=answer_format,
         )
 
@@ -190,7 +219,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
     async def ask(req: AskRequest):
         """
         Beantwortet mehrere Fragen parallel via asyncio.gather().
-        Jede Frage durchläuft Retrieval + LLM-Generierung; alle laufen gleichzeitig.
+        Jede Frage durchläuft Retrieval + LLM-Generierung mit CAD-Kontext.
         Das Ergebnis wird als JSON-Datei in logs/queries/ gespeichert.
         """
         questions = [q.strip() for q in req.questions if q.strip()]
@@ -208,9 +237,8 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
             raise HTTPException(status_code=500, detail=str(e))
 
         # Anfrage als JSON-Log speichern (kein Konversationsgedächtnis, jede Anfrage isoliert)
-        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         qid = uuid.uuid4().hex
-        (logs_dir / f"{ts}_{qid}.json").write_text(
+        (logs_dir / f"{_utc_stamp()}_{qid}.json").write_text(
             stable_json_dumps({
                 "questions": questions,
                 "cad_metadata": cad,
@@ -218,7 +246,6 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
                 "answers": answers,
                 "models": {
                     "embedder": config.embedder.model_name,
-                    "metadata_extractor": config.metadata_extractor.model_name,
                     "answer_generator": config.answer_generator.model_name,
                 },
             }),

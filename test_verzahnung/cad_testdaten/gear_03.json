@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "source_file": "gear_03.step",
+  "gear_type": "spur",
+  "confidence": 0.95,
+  "basic_geometry": {
+    "outer_diameter_mm": 74.7,
+    "root_diameter_mm": 67.95,
+    "pitch_diameter_mm": 72.0,
+    "face_width_mm": 18.0,
+    "total_width_mm": 18.0,
+    "hub_bore_diameter_mm": 18.0,
+    "volume_mm3": 74306.2,
+    "surface_area_mm2": 12989.4
+  },
+  "tooth_profile": {
+    "num_teeth": 48,
+    "module_mm": 1.5,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "tooth_height_mm": 3.375,
+    "addendum_mm": 1.5,
+    "dedendum_mm": 1.875,
+    "profile_shift_x": -0.1,
+    "root_fillet_radius_mm": 0.57,
+    "tooth_thickness_mm": 2.356
+  },
+  "topology": {
+    "is_internal_gear": false,
+    "symmetry_type": "rotational",
+    "cone_angle_deg": null,
+    "shaft_angle_deg": null,
+    "worm_starts": null,
+    "keyway_present": true,
+    "has_flanges": false
+  },
+  "material_context": {
+    "material": "42CrMo4",
+    "mass_kg": 0.583,
+    "bore_fit": null,
+    "quality_class_din": 6,
+    "norm_reference": [
+      "DIN 867",
+      "DIN 3960",
+      "DIN ISO 1328"
+    ],
+    "tolerance_class": null,
+    "surface_roughness_ra": null
+  },
+  "metadata": {
+    "part_name": "Testzahnrad gear_03",
+    "part_number": "TEST-GEAR_03",
+    "created_by": null
+  },
+  "extraction_quality": {
+    "warnings": [],
+    "extraction_notes": {
+      "synthetic": "Erzeugt von generate_testdata.py, kein echtes STEP-Parsing."
+    },
+    "bbox_mm": {
+      "x": 74.7,
+      "y": 74.7,
+      "z": 18.0
+    }
+  },
+  "hints": {}
+}

@@ -16,7 +16,7 @@
   <body>
     <main class="container">
       <h2>KI-Copilot für Verzahnungswissen</h2>
-      <p class="muted">Striktes RAG: Antworten nur aus hochgeladenen PDFs + Bauteildaten.</p>
+      <p class="muted">Striktes RAG: Antworten nur aus hochgeladenen PDFs + Bauteildaten. Die CAD-Parameter fließen als Kontext in die Antwortgenerierung ein.</p>
 
       <details open>
         <summary><strong>Wissensbasis</strong> (PDF Upload)</summary>
@@ -40,11 +40,17 @@
       <section class="grid2">
         <div>
           <h3>Bauteildaten</h3>
-          <label>CAD-Datei (kommt später)
-            <input type="file" disabled />
+          <label>STEP-Datei analysieren (.step/.stp)
+            <input id="stepFile" type="file" accept=".step,.stp" />
           </label>
-          <button id="randomGear">Zufälliges Zahnrad generieren</button>
-          <button class="secondary" id="reroll" disabled>Andere Werte würfeln</button>
+          <button id="analyzeBtn">CAD analysieren</button>
+          <small id="cadStatus" class="muted"></small>
+          <hr />
+          <label>Synthetischer Testdatensatz
+            <select id="cadExample"><option value="">– wählen –</option></select>
+          </label>
+          <button class="secondary" id="loadExample">Testdatensatz laden</button>
+          <button class="secondary" id="randomGear">Zufälliges Beispiel</button>
           <pre id="cad" style="min-height: 220px;"></pre>
         </div>
         <div>
@@ -86,6 +92,11 @@
       const el = (id) => document.getElementById(id);
       const state = { cad: {}, maxQ: 6, defaultQ: 3 };
 
+      const GEAR_TYPE_LABELS = {
+        spur: "Stirnrad", helical: "Schrägverzahnung", bevel: "Kegelrad",
+        internal: "Innenverzahnung", worm: "Schnecke", rack: "Zahnstange",
+      };
+
       function formatError(payload, fallback) {
         if (!payload) return fallback;
         const d = payload.detail ?? payload;
@@ -93,12 +104,16 @@
         try { return JSON.stringify(d, null, 2); } catch (_) { return String(d); }
       }
 
+      function escapeHtml(s) {
+        return String(s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+      }
+
       function addQuestionField(value = "") {
         const idx = el("questions").children.length + 1;
         const wrap = document.createElement("div");
         wrap.innerHTML = `
           <label>Frage ${idx}
-            <input type="text" value="${value.replaceAll('"','&quot;')}" />
+            <input type="text" value="${escapeHtml(value).replaceAll('"','&quot;')}" />
           </label>
         `;
         if (idx > 1) {
@@ -120,7 +135,7 @@
         const r = await fetch(`${API}/documents`);
         const docs = await r.json().catch(() => null);
         if (!r.ok) {
-          el("docs").innerHTML = `<small class="muted">Error: ${formatError(docs, "documents failed")}</small>`;
+          el("docs").innerHTML = `<small class="muted">Error: ${escapeHtml(formatError(docs, "documents failed"))}</small>`;
           return;
         }
         const wrap = document.createElement("div");
@@ -130,7 +145,7 @@
           row.style.justifyContent = "space-between";
           row.style.gap = "0.5rem";
           row.style.alignItems = "center";
-          row.innerHTML = `<span>📄 ${d.source_path} — ${d.chunk_count} Chunks</span>`;
+          row.innerHTML = `<span>📄 ${escapeHtml(d.source_path)} — ${d.chunk_count} Chunks</span>`;
           const del = document.createElement("button");
           del.className = "secondary";
           del.textContent = "Entfernen";
@@ -146,26 +161,49 @@
         el("docs").appendChild(wrap);
       }
 
+      async function refreshCadExamples() {
+        const r = await fetch(`${API}/cad/examples`);
+        if (!r.ok) return;
+        const j = await r.json().catch(() => null);
+        if (!j?.files) return;
+        const sel = el("cadExample");
+        j.files.forEach(name => {
+          const opt = document.createElement("option");
+          opt.value = name;
+          opt.textContent = name;
+          sel.appendChild(opt);
+        });
+      }
+
+      function cadSummary(cad) {
+        if (!cad || !cad.gear_type) return "";
+        const typ = GEAR_TYPE_LABELS[cad.gear_type] || cad.gear_type;
+        const tp = cad.tooth_profile || {};
+        const parts = [`Untersuchtes Bauteil: ${typ}`];
+        if (tp.module_mm != null) parts.push(`Modul ${tp.module_mm}`);
+        if (tp.num_teeth != null) parts.push(`${tp.num_teeth} Zähne`);
+        if (tp.helix_angle_deg) parts.push(`Schrägungswinkel ${tp.helix_angle_deg}°`);
+        const mat = cad.material_context?.material;
+        if (mat) parts.push(`Werkstoff ${mat}`);
+        return parts.join(", ");
+      }
+
       function renderCad() {
-        el("cad").textContent = JSON.stringify(state.cad, null, 2);
-        el("reroll").disabled = !state.cad || Object.keys(state.cad).length === 0;
+        el("cad").textContent = Object.keys(state.cad || {}).length ? JSON.stringify(state.cad, null, 2) : "";
       }
 
       function renderOutput(resp) {
         el("output").style.display = "block";
         el("cadOut").textContent = JSON.stringify(resp.cad_metadata, null, 2);
-        const t = resp.cad_metadata?.verzahnungstyp;
-        const m = resp.cad_metadata?.modul;
-        const z = resp.cad_metadata?.zaehnezahl;
-        el("cadHeader").textContent = t ? `Untersuchtes Bauteil: ${t} mit Modul ${m} und ${z} Zähnen` : "";
+        el("cadHeader").textContent = cadSummary(resp.cad_metadata);
 
         el("answers").innerHTML = "";
         resp.answers.forEach((a) => {
           const card = document.createElement("article");
           const sources = a.sources || [];
           card.innerHTML = `
-            <header><strong>${a.question}</strong></header>
-            <div>${(a.answer_text || "").replaceAll("\n","<br/>")}</div>
+            <header><strong>${escapeHtml(a.question)}</strong></header>
+            <div>${escapeHtml(a.answer_text || "").replaceAll("\n","<br/>")}</div>
           `;
           const det = document.createElement("details");
           const sum = document.createElement("summary");
@@ -174,8 +212,8 @@
           sources.forEach((s) => {
             const p = document.createElement("div");
             p.innerHTML = `
-              <p class="muted">[${s.qid}] ${s.source_path} — Seite ${s.page_number} — Similarity ${Number(s.similarity).toFixed(3)}</p>
-              <details><summary>Chunktext</summary><pre>${(s.text||"")}</pre></details>
+              <p class="muted">[${escapeHtml(s.qid)}] ${escapeHtml(s.source_path)} — Seite ${s.page_number} — Similarity ${Number(s.similarity).toFixed(3)}</p>
+              <details><summary>Chunktext</summary><pre>${escapeHtml(s.text || "")}</pre></details>
               <hr/>
             `;
             det.appendChild(p);
@@ -197,12 +235,44 @@
         await refreshDocs();
       };
 
-      el("randomGear").onclick = async () => {
-        const r = await fetch(`${API}/cad/random`);
+      el("analyzeBtn").onclick = async () => {
+        const f = el("stepFile").files?.[0];
+        if (!f) { el("cadStatus").textContent = "Bitte STEP-Datei wählen."; return; }
+        el("cadStatus").textContent = "Analysiere…";
+        const fd = new FormData();
+        fd.append("file", f);
+        const r = await fetch(`${API}/cad/analyze`, { method: "POST", body: fd });
+        const j = await r.json().catch(() => null);
+        if (r.ok) {
+          state.cad = j;
+          el("cadStatus").textContent = "CAD-Analyse fertig.";
+          renderCad();
+        } else {
+          el("cadStatus").textContent = `Error: ${formatError(j, "analyze failed")}`;
+        }
+      };
+
+      el("loadExample").onclick = async () => {
+        const name = el("cadExample").value;
+        if (!name) return;
+        const r = await fetch(`${API}/cad/examples/${encodeURIComponent(name)}`);
+        if (!r.ok) { el("cadStatus").textContent = "Testdatensatz nicht ladbar."; return; }
         state.cad = await r.json();
+        el("cadStatus").textContent = `Testdatensatz ${name} geladen.`;
         renderCad();
       };
-      el("reroll").onclick = el("randomGear").onclick;
+
+      el("randomGear").onclick = async () => {
+        const r = await fetch(`${API}/cad/random`);
+        const j = await r.json().catch(() => null);
+        if (r.ok) {
+          state.cad = j;
+          el("cadStatus").textContent = "Zufälliges Beispiel geladen.";
+          renderCad();
+        } else {
+          el("cadStatus").textContent = `Error: ${formatError(j, "random failed")}`;
+        }
+      };
 
       el("addQ").onclick = () => {
         if (el("questions").children.length >= state.maxQ) return;
@@ -233,9 +303,9 @@
       (async () => {
         for (let i=0; i<state.defaultQ; i++) addQuestionField("");
         await refreshDocs();
+        await refreshCadExamples();
         renderCad();
       })();
     </script>
   </body>
 </html>
-

@@ -42,13 +42,11 @@ class Embedder(Protocol):
     def embed(self, texts: list[str]) -> EmbeddingResult: ...
 
 
-class MetadataExtractor(Protocol):
-    """Extrahiert domänenspezifische Metadaten aus einem Chunk via LLM. Aktuelle Impl.: OllamaMetadataExtractor."""
-    def extract(self, chunk: Chunk, schema: "MetadataSchema") -> dict: ...
-
-
 class CADAdapter(Protocol):
-    """Liefert Bauteilparameter aus einer CAD-Datei oder als Stub. Aktuelle Impl.: RandomGearGenerator."""
+    """
+    Liefert das vollständige GearParameters-JSON (Format: cad_processor/src/output_schema.py).
+    Impls.: SyntheticCadJsonAdapter (Testdatensätze), CadProcessorClient (echte STEP-Analyse).
+    """
     def extract(self, file_path: Optional[Path]) -> dict: ...
 
 
@@ -60,7 +58,6 @@ class VectorStore(Protocol):
         self,
         query_vector: list[float],
         *,
-        filter: dict,      # Metadatenfilter im internen Dict-Format
         top_k: int,
         threshold: float,
         query_sparse_vector: Optional[dict] = None,
@@ -75,8 +72,8 @@ class VectorStore(Protocol):
 
 
 class Retriever(Protocol):
-    """Findet relevante Chunks für eine Frage via Metadatenfilter + Vektorsuche. Aktuelle Impl.: TwoStageRetriever."""
-    def retrieve(self, question: str, cad_metadata: dict) -> list[RetrievedChunk]: ...
+    """Findet relevante Chunks für die Nutzerfrage. Aktuelle Impl.: HybridRetriever."""
+    def retrieve(self, question: str) -> list[RetrievedChunk]: ...
 
 
 class AnswerGenerator(Protocol):
@@ -87,9 +84,5 @@ class AnswerGenerator(Protocol):
         question: str,
         chunks: list[RetrievedChunk],
         cad_metadata: dict,
-        answer_format: str = "standard",
+        answer_format: Optional[str] = None,
     ) -> Answer: ...
-
-
-# Später Import um zirkuläre Abhängigkeit zu vermeiden (interfaces ← schema ← interfaces).
-from app.core.schema import MetadataSchema  # noqa: E402

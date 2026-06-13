@@ -9,11 +9,11 @@ Antwort generieren – ausschließlich auf Basis der übergebenen Chunks (kein H
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 from app.core.types import Answer, RetrievedChunk
 from app.core.utils import stable_json_dumps
 from app.implementations.ollama_client import OllamaClient
-
 
 # Übersetzt die Format-Auswahl aus dem Frontend in eine konkrete LLM-Anweisung,
 # die unter "AUSGABEFORMAT" in den Prompt eingesetzt wird.
@@ -55,28 +55,21 @@ class OllamaAnswerGenerator:
         question: str,
         chunks: list[RetrievedChunk],
         cad_metadata: dict,
-        answer_format: str = DEFAULT_FORMAT,
+        answer_format: Optional[str] = None,
     ) -> Answer:
         """
         Wandelt Chunks in einen [Q1]/[Q2]-Block um, fügt CAD-Kontext hinzu und ruft das LLM auf.
         answer_format steuert den AUSGABEFORMAT-Abschnitt des Prompts (kurz/standard/ausführlich/…).
         Gibt ein Answer-Dict zurück mit Antworttext und source-Liste für das Frontend.
+        question ist immer die ORIGINALFRAGE des Nutzers – nicht die umgeschriebene Retrieval-Anfrage.
         """
 
         # Chunks als lesbaren Block formatieren: [Q1] Quelle: datei.pdf, Seite 5 \n <text> \n ---
-        # Extrahierte Metadaten werden mit ausgegeben, damit das LLM Fakten (Alter, Sonnenstunden, ...)
-        # direkt aus der strukturierten Extraktion zitieren kann – nicht nur aus dem Fließtext.
         chunk_lines: list[str] = []
         sources = []
         for idx, rc in enumerate(chunks, start=1):
             qid = f"Q{idx}"
             chunk_lines.append(f"[{qid}] Quelle: {Path(rc.chunk.source_path).name}, Seite {rc.chunk.page_number}")
-            non_null_meta = {
-                k: v for k, v in (rc.metadata or {}).items()
-                if v is not None and v not in ("unspecified", "")
-            }
-            if non_null_meta:
-                chunk_lines.append(f"  Extrahierte Fakten: {stable_json_dumps(non_null_meta)}")
             chunk_lines.append(rc.chunk.text.strip())
             chunk_lines.append("---")
             sources.append({
@@ -87,14 +80,17 @@ class OllamaAnswerGenerator:
                 "text": rc.chunk.text,
             })
 
-        format_instruction = FORMAT_INSTRUCTIONS.get(answer_format, FORMAT_INSTRUCTIONS[DEFAULT_FORMAT])
+        format_instruction = FORMAT_INSTRUCTIONS.get(
+            (answer_format or DEFAULT_FORMAT).strip().casefold(),
+            FORMAT_INSTRUCTIONS[DEFAULT_FORMAT],
+        )
 
         prompt = self.prompt_template.format(
             DOMAIN=self.domain_name,
             CAD_METADATA_JSON=stable_json_dumps(cad_metadata),  # deterministisches JSON für den Prompt
             CHUNKS_BLOCK="\n".join(chunk_lines).strip(),
             QUESTION=question,
-            FORMAT_INSTRUCTION=format_instruction,
+            FORMAT=format_instruction,
         )
 
         answer_text = self.client.generate(

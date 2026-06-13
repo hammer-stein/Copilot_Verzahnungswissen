@@ -2,8 +2,8 @@
 qdrant_store.py – Vektordatenbank-Adapter für Qdrant.
 
 Implementiert das VectorStore-Protokoll. Speichert Chunks als Qdrant-Punkte mit
-Vektor + Payload (Text, Metadaten, doc_hash) und ermöglicht kombinierte Vektor-
-und Metadaten-Filtersuche. Punkt-IDs sind deterministisch aus (doc_hash, position) gehasht.
+Vektor + Payload (Text, doc_hash, Sparse-Vektor) und führt die Vektorsuche aus.
+Punkt-IDs sind deterministisch aus (doc_hash, position) gehasht.
 """
 
 from __future__ import annotations
@@ -16,12 +16,9 @@ from qdrant_client.http.models import (
     Distance,
     FieldCondition,
     Filter,
-    IsEmptyCondition,
     MatchValue,
-    PayloadField,
     PayloadSchemaType,
     PointStruct,
-    Range,
     VectorParams,
 )
 
@@ -77,19 +74,6 @@ class QdrantStore:
         self.client.create_payload_index(
             collection_name=self.collection_name, field_name="source_path", field_schema=PayloadSchemaType.KEYWORD,
         )
-        for field_name, field_schema in [
-            ("metadata.verzahnungstyp", PayloadSchemaType.KEYWORD),
-            ("metadata.modul_min", PayloadSchemaType.FLOAT),
-            ("metadata.modul_max", PayloadSchemaType.FLOAT),
-        ]:
-            try:
-                self.client.create_payload_index(
-                    collection_name=self.collection_name,
-                    field_name=field_name,
-                    field_schema=field_schema,
-                )
-            except Exception:
-                pass
 
     def upsert(self, chunks: list[EmbeddedChunk]) -> None:
         """
@@ -125,7 +109,6 @@ class QdrantStore:
         self,
         query_vector: list[float],
         *,
-        filter: dict,
         top_k: int,
         threshold: float,
         query_sparse_vector: Optional[dict[str, float]] = None,
@@ -134,19 +117,15 @@ class QdrantStore:
         hybrid_sparse_weight: float = 0.3,
     ) -> list[SearchResult]:
         """
-        Führt eine kombinierte Vektor- und Metadaten-Filtersuche aus.
-        query_points() ist die aktuelle API (Qdrant >= 1.10, ersetzt das veraltete search()).
+        Führt die Vektorsuche aus. query_points() ist die aktuelle API
+        (Qdrant >= 1.10, ersetzt das veraltete search()).
         Hybrid-Search nutzt Qdrant für dichte Kandidaten und rerankt diese lokal mit Sparse-Scores.
         """
         if not self._collection_exists():
             return []  # leere Wissensbasis (noch nichts indexiert)
-
-        qfilter = _dict_filter_to_qdrant(filter)
-
         response = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,
-            query_filter=qfilter,      # None = kein Filter
             limit=top_k,
             score_threshold=threshold,
             with_payload=True,
@@ -232,40 +211,6 @@ def _payload_to_chunk(payload: dict[str, Any]):
         position=int(payload.get("position", 0) or 0),
         doc_hash=str(payload.get("doc_hash", "")),
     )
-
-
-def _dict_filter_to_qdrant(filter_dict: dict) -> Optional[Filter]:
-    """
-    Wandelt das interne Filter-Dict in Qdrant-Filter-Objekte um.
-    or_empty=True kombiniert jede Bedingung mit IsEmpty (OR) – Chunks ohne das Feld werden nicht ausgeschlossen.
-    """
-    if not filter_dict:
-        return None
-
-    must_conditions = []
-    for cond in filter_dict.get("must", []):
-        key = cond["key"]
-        or_empty = bool(cond.get("or_empty", False))
-
-        if "match" in cond:
-            c = FieldCondition(key=key, match=MatchValue(value=cond["match"]))
-        elif "contains" in cond:
-            c = FieldCondition(key=key, match=MatchValue(value=cond["contains"]))
-        elif "range" in cond:
-            r = cond["range"]
-            c = FieldCondition(key=key, range=Range(gte=r.get("gte"), lte=r.get("lte")))
-        else:
-            continue  # unbekannter Typ
-
-        if or_empty:
-            # OR-Verknüpfung: Bedingung ODER Feld fehlt (Großzügigkeitsprinzip)
-            must_conditions.append(
-                Filter(should=[c, IsEmptyCondition(is_empty=PayloadField(key=key))])
-            )
-        else:
-            must_conditions.append(c)
-
-    return Filter(must=must_conditions or None)
 
 
 def _sparse_dot(a: dict[str, float], b: dict[str, Any]) -> float:
