@@ -24,7 +24,8 @@ cad_processor/
 docs/
 tests/
 test_verzahnung/
-design-system-source/   # Designer-Quellen/Showcase des Design-Systems (nur die gebündelte Runtime unter frontend/design-system/ wird ausgeliefert)
+# Designer-Quellen/Showcase des Design-Systems (nur die gebündelte Runtime unter frontend/design-system/ wird ausgeliefert)
+design-system-source/
 
 # Sonstiges
 *.pdf

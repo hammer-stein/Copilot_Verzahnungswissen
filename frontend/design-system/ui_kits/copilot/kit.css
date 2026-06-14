@@ -216,6 +216,7 @@ body {
 .vc-part__dot { width: 7px; height: 7px; border-radius: 50%; background: #34c759; flex: none; box-shadow: 0 0 0 3px rgba(52,199,89,0.16); }
 .vc-part__status--idx { color: var(--accent-text); }
 .vc-part__status--idx .vc-spinner { width: 12px; height: 12px; border-width: 2px; }
+.vc-part__status--err { color: var(--danger); }
 
 /* RAG knowledge-base status — summary, never the full list */
 .vc-kb {

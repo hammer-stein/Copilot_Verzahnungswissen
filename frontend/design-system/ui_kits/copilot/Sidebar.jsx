@@ -57,6 +57,10 @@ function Sidebar({ chats, activePart, knowledgeBase, activeChat, onSelectChat, o
               <div className="vc-part__name" title={activePart.name}>{activePart.name}</div>
               {activePart.status === 'indexing' ? (
                 <div className="vc-part__status vc-part__status--idx"><Spinner /> Wird analysiert…</div>
+              ) : activePart.status === 'error' ? (
+                <div className="vc-part__status vc-part__status--err" title={activePart.error || ''}>
+                  <Icon name="alert-circle" size={12} /> Analyse fehlgeschlagen
+                </div>
               ) : (
                 <div className="vc-part__status"><span className="vc-part__dot" /> Bereit für Fragen</div>
               )}
@@ -87,8 +91,8 @@ function Sidebar({ chats, activePart, knowledgeBase, activeChat, onSelectChat, o
       </div>
 
       <div className="vc-sidebar__foot">
-        <span className="vc-avatar">MH</span>
-        <span>Dr. Ing. M. Hartmann</span>
+        <span className="vc-avatar">VZ</span>
+        <span>Verzahnungs-Copilot</span>
         <IconButton size="sm" title="Einstellungen" style={{ marginLeft: 'auto' }}><Icon name="settings" size={15} /></IconButton>
       </div>
     </aside>

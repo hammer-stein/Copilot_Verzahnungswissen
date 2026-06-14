@@ -1,3 +1,4 @@
+
 """
 answer_generator_ollama.py – LLM-basierte Antwortgenerierung via Ollama.
 
