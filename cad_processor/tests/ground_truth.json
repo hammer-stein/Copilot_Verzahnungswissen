@@ -9,101 +9,201 @@
     "export": "File → Export → STEP AP214 oder AP242"
   },
 
-  "spur_m2_z20.step": {
-    "_notes": "FreeCAD FCGear: InvoluteGear, m=2, z=20, b=20, α=20°",
-    "gear_type": "spur",
-    "is_internal_gear": false,
-    "num_teeth": 20,
-    "module_mm": 2.0,
-    "outer_diameter_mm": 44.0,
-    "pitch_diameter_mm": 40.0,
-    "root_diameter_mm": 35.0,
-    "face_width_mm": 20.0,
-    "helix_angle_deg": 0.0,
-    "pressure_angle_deg": 20.0
-  },
-
-  "spur_m2_z30.step": {
-    "_notes": "FreeCAD FCGear: InvoluteGear, m=2, z=30, b=20, α=20°",
-    "gear_type": "spur",
-    "is_internal_gear": false,
-    "num_teeth": 30,
-    "module_mm": 2.0,
-    "outer_diameter_mm": 64.0,
-    "pitch_diameter_mm": 60.0,
-    "root_diameter_mm": 55.0,
-    "face_width_mm": 20.0,
-    "helix_angle_deg": 0.0,
-    "pressure_angle_deg": 20.0
-  },
-
-  "spur_m3_z15.step": {
-    "_notes": "FreeCAD FCGear: InvoluteGear, m=3, z=15, b=20, α=20°",
+  "2664N311_Metal Gear - 20 Degree Pressure Angle.STEP": {
+    "_notes": "McMaster 2664N311. Stirnrad mit Nabe, Madenschraube (M3). hub_diameter weggelassen: Nabe = Außendurchmesser (8.5mm) → kein eigenständiger Naben-Zylinder extrahierbar.",
+    "_extra_datasheet": { "hub_width_mm": 11.0, "set_screw": "M3", "material": "Black-Oxide 1045 Carbon Steel", "part_number": "2664N311" },
     "gear_type": "spur",
     "is_internal_gear": false,
     "num_teeth": 15,
-    "module_mm": 3.0,
-    "outer_diameter_mm": 51.0,
-    "pitch_diameter_mm": 45.0,
-    "root_diameter_mm": 37.5,
-    "face_width_mm": 20.0,
+    "module_mm": 0.5,
+    "outer_diameter_mm": 8.5,
+    "pitch_diameter_mm": 7.5,
+    "root_diameter_mm": 6.25,
+    "face_width_mm": 5.0,
     "helix_angle_deg": 0.0,
-    "pressure_angle_deg": 20.0
+    "pressure_angle_deg": 20.0,
+    "bore_diameter_mm": 3.0,
+    "overall_width_mm": 16.0
   },
 
-  "spur_m5_z10.step": {
-    "_notes": "FreeCAD FCGear: InvoluteGear, m=5, z=10, b=25, α=20° — Grenzfall: kleine Zähnezahl",
+  "2664N11_Metal Gear - 20 Degree Pressure Angle.STEP": {
+    "_notes": "McMaster 2664N11. hub_diameter weggelassen: Nabe = Außendurchmesser (17mm).",
+    "_extra_datasheet": { "hub_width_mm": 20.0, "material": "Black-Oxide 1045 Carbon Steel", "part_number": "2664N11" },
     "gear_type": "spur",
     "is_internal_gear": false,
-    "num_teeth": 10,
-    "module_mm": 5.0,
-    "outer_diameter_mm": 60.0,
-    "pitch_diameter_mm": 50.0,
-    "root_diameter_mm": 37.5,
-    "face_width_mm": 25.0,
+    "num_teeth": 15,
+    "module_mm": 1.0,
+    "outer_diameter_mm": 17.0,
+    "pitch_diameter_mm": 15.0,
+    "root_diameter_mm": 12.5,
+    "face_width_mm": 10.0,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "bore_diameter_mm": 6.0,
+    "overall_width_mm": 30.0
+  },
+
+  "2664N19_Metal Gear - 20 Degree Pressure Angle.STEP": {
+    "_notes": "McMaster 2664N19. Stirnrad mit Nabe (Ø40), Passfedernut (4×1.8mm).",
+    "_extra_datasheet": { "hub_width_mm": 10.0, "keyway_width_mm": 4.0, "keyway_depth_mm": 1.8, "material": "Black-Oxide 1045 Carbon Steel", "part_number": "2664N19" },
+    "gear_type": "spur",
+    "is_internal_gear": false,
+    "num_teeth": 36,
+    "module_mm": 1.5,
+    "outer_diameter_mm": 57.0,
+    "pitch_diameter_mm": 54.0,
+    "root_diameter_mm": 50.25,
+    "face_width_mm": 15.0,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "bore_diameter_mm": 12.0,
+    "overall_width_mm": 25.0,
+    "hub_diameter_mm": 40.0
+  },
+
+  "2664N486_Metal Gear - 20 Degree Pressure Angle.STEP": {
+    "_notes": "McMaster 2664N486. Stirnrad aus Messing mit Nabe (Ø25).",
+    "_extra_datasheet": { "hub_width_mm": 8.0, "material": "Brass", "part_number": "2664N486" },
+    "gear_type": "spur",
+    "is_internal_gear": false,
+    "num_teeth": 30,
+    "module_mm": 1.0,
+    "outer_diameter_mm": 32.0,
+    "pitch_diameter_mm": 30.0,
+    "root_diameter_mm": 27.5,
+    "face_width_mm": 6.0,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "bore_diameter_mm": 6.0,
+    "overall_width_mm": 14.0,
+    "hub_diameter_mm": 25.0
+  },
+
+  "2485N205_Metal Gear Rack - 20 Degree Pressure Angle.STEP": {
+    "_notes": "Reale Zahnstange McMaster 2485N205. LINEAR — keine Rotationsachse → eigener Mess-/Klassifikationspfad nötig (siehe docs/gear_classifier_blueprint.md).",
+    "_extra_datasheet": { "shape": "rectangle", "length_mm": 500.0, "pitch_height_mm": 17.8, "height_mm": 19.8, "material": "1045 Carbon Steel", "part_number": "2485N205" },
+    "gear_type": "rack",
+    "is_internal_gear": false,
+    "module_mm": 2.0,
+    "face_width_mm": 20.0,
+    "pressure_angle_deg": 20.0
+  },
+
+  "2515N11_Metal Bevel Gear.STEP": {
+    "_notes": "McMaster 2515N11. Gerade Kegelrad, 2:1, γ=63.43°. ZOLL DP16 → m=1.5875.",
+    "_extra_datasheet": { "system_of_measurement": "inch", "diametral_pitch": 16, "speed_ratio": "2:1", "mating_teeth": 12, "pitch_cone_angle_deg": 63.43, "hub_width_mm": 11.3792, "mounting_distance_mm": 25.4, "material": "1144 Carbon Steel", "part_number": "2515N11" },
+    "gear_type": "bevel",
+    "is_internal_gear": false,
+    "num_teeth": 24,
+    "module_mm": 1.5875,
+    "outer_diameter_mm": 39.116,
+    "pitch_diameter_mm": 38.1,
+    "face_width_mm": 4.826,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "bore_diameter_mm": 12.7,
+    "overall_width_mm": 18.8214,
+    "hub_diameter_mm": 25.4
+  },
+
+  "2515N355_Metal Bevel Gear.STEP": {
+    "_notes": "McMaster 2515N355. Gerade Kegelrad, 5:1 → sehr flacher Teilkegel γ=78.69°.",
+    "_extra_datasheet": { "speed_ratio": "5:1", "mating_teeth": 12, "pitch_cone_angle_deg": 78.69, "hub_width_mm": 20.0, "mounting_distance_mm": 50.0, "material": "Black-Oxide 1045 Carbon Steel", "part_number": "2515N355" },
+    "gear_type": "bevel",
+    "is_internal_gear": false,
+    "num_teeth": 60,
+    "module_mm": 2.5,
+    "outer_diameter_mm": 150.5,
+    "pitch_diameter_mm": 150.0,
+    "face_width_mm": 20.0,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "bore_diameter_mm": 20.0,
+    "overall_width_mm": 40.0,
+    "hub_diameter_mm": 70.0
+  },
+
+  "6010N13_High-Power Metal Bevel Gear.STEP": {
+    "_notes": "McMaster 6010N13. SPIRAL-Kegelrad (High Load), 2:1, γ=63.43°. Spiralwinkel nicht im Datenblatt → helix weggelassen. Bohrung als Bereich (10-25mm) → bore weggelassen.",
+    "_extra_datasheet": { "tooth": "spiral", "speed_ratio": "2:1", "mating_teeth": 20, "pitch_cone_angle_deg": 63.43, "hub_width_mm": 15.0, "mounting_distance_mm": 35.0, "material": "Black-Oxide 1045 Carbon Steel", "part_number": "6010N13" },
+    "gear_type": "bevel",
+    "is_internal_gear": false,
+    "num_teeth": 40,
+    "module_mm": 1.5,
+    "outer_diameter_mm": 60.75,
+    "pitch_diameter_mm": 60.0,
+    "face_width_mm": 10.0,
+    "pressure_angle_deg": 20.0,
+    "overall_width_mm": 24.9,
+    "hub_diameter_mm": 38.0
+  },
+
+  "2515N336_Metal Bevel Gear.STEP": {
+    "_notes": "McMaster 2515N336. Gerade Kegelrad, 2:1, γ=63.43°.",
+    "_extra_datasheet": { "speed_ratio": "2:1", "mating_teeth": 20, "pitch_cone_angle_deg": 63.43, "hub_width_mm": 8.0, "mounting_distance_mm": 22.0, "material": "Black-Oxide 1045 Carbon Steel", "part_number": "2515N336" },
+    "gear_type": "bevel",
+    "is_internal_gear": false,
+    "num_teeth": 40,
+    "module_mm": 1.0,
+    "outer_diameter_mm": 40.6,
+    "pitch_diameter_mm": 40.0,
+    "face_width_mm": 6.0,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "bore_diameter_mm": 8.0,
+    "overall_width_mm": 15.0,
+    "hub_diameter_mm": 25.0
+  },
+
+  "3856N121_Plastic Bevel Gear.STEP": {
+    "_notes": "McMaster 3856N121. Gerade Kegelrad aus Nylon, 2:1, γ=63.43°. Gleiche Geometrie wie 2515N336.",
+    "_extra_datasheet": { "speed_ratio": "2:1", "mating_teeth": 20, "pitch_cone_angle_deg": 63.43, "hub_width_mm": 8.0, "mounting_distance_mm": 22.0, "color": "blue", "fabrication": "molded", "material": "Nylon", "part_number": "3856N121" },
+    "gear_type": "bevel",
+    "is_internal_gear": false,
+    "num_teeth": 40,
+    "module_mm": 1.0,
+    "outer_diameter_mm": 40.6,
+    "pitch_diameter_mm": 40.0,
+    "face_width_mm": 6.0,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "bore_diameter_mm": 8.0,
+    "overall_width_mm": 15.0,
+    "hub_diameter_mm": 25.0
+  },
+
+  "2515N15_Metal Bevel Gear.STEP": {
+    "_notes": "McMaster 2515N15. Gerade Kegelrad, ZOLL DP16 → m=1.5875, 3:1, γ=71.57°.",
+    "_extra_datasheet": { "system_of_measurement": "inch", "diametral_pitch": 16, "speed_ratio": "3:1", "mating_teeth": 16, "pitch_cone_angle_deg": 71.57, "hub_width_mm": 14.3002, "mounting_distance_mm": 33.3502, "material": "1144 Carbon Steel", "part_number": "2515N15" },
+    "gear_type": "bevel",
+    "is_internal_gear": false,
+    "num_teeth": 48,
+    "module_mm": 1.5875,
+    "outer_diameter_mm": 76.708,
+    "pitch_diameter_mm": 76.2,
+    "face_width_mm": 10.668,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "bore_diameter_mm": 15.875,
+    "overall_width_mm": 24.7142,
+    "hub_diameter_mm": 38.1
+  },
+
+  "6529K57_Metal Miter Gear.STEP": {
+    "_notes": "McMaster 6529K57 Gehrungsrad (Miter = 1:1-Kegelrad, γ=45°). KEIN Datenblatt — nur γ-unabhängige Soll-Werte (z, m, d=m·z). d_a/face_width/hub ohne Datenblatt nicht bestätigt.",
+    "gear_type": "bevel",
+    "is_internal_gear": false,
+    "num_teeth": 20,
+    "module_mm": 1.5,
+    "pitch_diameter_mm": 30.0,
     "helix_angle_deg": 0.0,
     "pressure_angle_deg": 20.0
   },
 
-  "helical_m2_z25_b15.step": {
-    "_notes": "FreeCAD FCGear: HelicalGear, m=2, z=25, β=15°, b=20, α=20° — Normalmodul",
-    "gear_type": "helical",
+  "6283K62_Metal Ratcheting Gear.STEP": {
+    "_notes": "McMaster 6283K62 Ratschenrad: Sägezahn-Kranz (z=50) + glatte Nabe. KEIN Evolventen-Zahnrad → nur Typ und z aussagekräftig. KEIN Datenblatt.",
+    "gear_type": "ratchet",
     "is_internal_gear": false,
-    "num_teeth": 25,
-    "module_mm": 2.0,
-    "outer_diameter_mm": 54.0,
-    "pitch_diameter_mm": 50.0,
-    "root_diameter_mm": 45.0,
-    "face_width_mm": 20.0,
-    "helix_angle_deg": 15.0,
-    "pressure_angle_deg": 20.0
-  },
-
-  "helical_m2_z25_b20.step": {
-    "_notes": "FreeCAD FCGear: HelicalGear, m=2, z=25, β=20°, b=20, α=20°",
-    "gear_type": "helical",
-    "is_internal_gear": false,
-    "num_teeth": 25,
-    "module_mm": 2.0,
-    "outer_diameter_mm": 54.0,
-    "pitch_diameter_mm": 50.0,
-    "root_diameter_mm": 45.0,
-    "face_width_mm": 20.0,
-    "helix_angle_deg": 20.0,
-    "pressure_angle_deg": 20.0
-  },
-
-  "helical_m3_z20_b30.step": {
-    "_notes": "FreeCAD FCGear: HelicalGear, m=3, z=20, β=30°, b=30, α=20°",
-    "gear_type": "helical",
-    "is_internal_gear": false,
-    "num_teeth": 20,
-    "module_mm": 3.0,
-    "outer_diameter_mm": 66.0,
-    "pitch_diameter_mm": 60.0,
-    "root_diameter_mm": 52.5,
-    "face_width_mm": 30.0,
-    "helix_angle_deg": 30.0,
-    "pressure_angle_deg": 20.0
+    "num_teeth": 50
   }
 }

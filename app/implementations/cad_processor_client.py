@@ -26,6 +26,13 @@ _GEAR_TYPE_MAP = {
 }
 
 
+def _val(field_dict):
+    """Entpackt ein ParameterValue-Dict (Schema 2.0) auf seinen Rohwert."""
+    if isinstance(field_dict, dict) and "value" in field_dict:
+        return field_dict["value"]
+    return field_dict
+
+
 class CadProcessorClient:
     """Synchroner HTTP-Client für den CAD-Processor. Wird via asyncio.to_thread() aufgerufen."""
 
@@ -64,19 +71,19 @@ class CadProcessorClient:
         material = result.get("material_context") or {}
 
         metadata: dict[str, Any] = {
-            "verzahnungstyp": _GEAR_TYPE_MAP.get(result.get("gear_type"), "unspecified"),
-            "modul": tooth.get("module_mm"),
-            "zaehnezahl": tooth.get("num_teeth"),
-            "eingriffswinkel": tooth.get("pressure_angle_deg"),
-            "schraegungswinkel": tooth.get("helix_angle_deg"),
-            "profilverschiebung": tooth.get("profile_shift_x"),
-            "teilkreisdurchmesser": geometry.get("pitch_diameter_mm"),
-            "kopfkreisdurchmesser": geometry.get("outer_diameter_mm"),
-            "fusskreisdurchmesser": geometry.get("root_diameter_mm"),
-            "zahnbreite": geometry.get("face_width_mm"),
-            "werkstoff": material.get("material"),
-            "konfidenz": result.get("confidence"),
-            "quelldatei": result.get("filename") or result.get("source_file"),
+            "verzahnungstyp": _GEAR_TYPE_MAP.get(_val(result.get("gear_type")), "unspecified"),
+            "modul":               _val(tooth.get("module_mm")),
+            "zaehnezahl":          _val(tooth.get("num_teeth")),
+            "eingriffswinkel":     _val(tooth.get("pressure_angle_deg")),
+            "schraegungswinkel":   _val(tooth.get("helix_angle_deg")),
+            "profilverschiebung":  _val(tooth.get("profile_shift_x")),
+            "teilkreisdurchmesser": _val(geometry.get("pitch_diameter_mm")),
+            "kopfkreisdurchmesser": _val(geometry.get("outer_diameter_mm")),
+            "fusskreisdurchmesser": _val(geometry.get("root_diameter_mm")),
+            "zahnbreite":          _val(geometry.get("face_width_mm")),
+            "werkstoff":           material.get("material"),
+            "konfidenz":           result.get("overall_confidence"),
+            "quelldatei":          result.get("filename") or result.get("source_file"),
         }
 
         # None-Werte entfernen: fehlende Felder erzeugen im Retriever keine Filterbedingung

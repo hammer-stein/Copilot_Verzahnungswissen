@@ -28,7 +28,7 @@ from geometry_analyzer import (
     assign_norm_reference,
     STANDARD_MODULES,
 )
-from output_schema import GearParameters
+from output_schema import GearParameters, ParameterValue, C
 from gear_hints import generate_gear_hints, GEAR_KNOWLEDGE
 
 
@@ -294,14 +294,14 @@ class TestOutputSchema:
 
     def test_to_json_creates_valid_file(self, tmp_path):
         params = GearParameters(source_file="test.stp")
-        params.gear_type = "spur"
+        params.gear_type = ParameterValue.make("spur", "", 0.88)
         output_path = str(tmp_path / "result.json")
         params.to_json(output_path)
         assert os.path.exists(output_path)
         with open(output_path) as f:
             data = json.load(f)
-        assert data["gear_type"] == "spur"
-        assert data["schema_version"] == "1.0"
+        assert data["gear_type"]["value"] == "spur"
+        assert data["schema_version"] == "2.0"
 
     def test_warnings_list_initially_empty(self):
         params = GearParameters(source_file="test.stp")
@@ -309,7 +309,7 @@ class TestOutputSchema:
 
     def test_confidence_default_is_1(self):
         params = GearParameters(source_file="test.stp")
-        assert params.confidence == 1.0
+        assert params.overall_confidence == 1.0
 
     def test_hints_field_in_to_dict(self):
         params = GearParameters(source_file="test.stp")
@@ -318,6 +318,24 @@ class TestOutputSchema:
         d = params.to_dict()
         assert "hints" in d
         assert "DIN 867" in d["hints"]["norms"]
+
+    def test_parameter_value_serialization(self):
+        pv = ParameterValue.make(44.0, "mm", 0.92)
+        d = pv.to_dict()
+        assert d == {"value": 44.0, "unit": "mm", "confidence": 0.92}
+
+    def test_gear_parameters_have_per_field_confidence(self):
+        params = GearParameters(source_file="test.stp")
+        params.outer_diameter_mm = ParameterValue.make(64.0, "mm", 0.92)
+        params.num_teeth = ParameterValue.make(30, "", 0.75)
+        params.module_mm = ParameterValue.make(2.0, "mm", 0.82)
+        d = params.to_dict()
+        for field_name in ("outer_diameter_mm",):
+            field_val = d["basic_geometry"][field_name]
+            assert isinstance(field_val, dict), f"{field_name} should be a dict"
+            assert "value" in field_val and "confidence" in field_val
+        assert d["tooth_profile"]["num_teeth"]["value"] == 30
+        assert d["tooth_profile"]["module_mm"]["confidence"] == 0.82
 
 
 # ─────────────────────────────────────────────

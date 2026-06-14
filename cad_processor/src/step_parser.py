@@ -13,9 +13,12 @@ Verwendung:
 """
 
 import argparse
+import logging
 import math
-import os
 import sys
+from pathlib import Path
+
+_log = logging.getLogger("step_parser")
 
 # pythonocc
 from OCC.Core.STEPControl import STEPControl_Reader
@@ -24,16 +27,18 @@ from OCC.Core.BRepBndLib import brepbndlib
 from OCC.Core.Bnd import Bnd_Box
 from OCC.Core.BRepGProp import brepgprop
 from OCC.Core.GProp import GProp_GProps
-from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_REVERSED, TopAbs_FORWARD
+from OCC.Core.TopAbs import (TopAbs_FACE, TopAbs_EDGE, TopAbs_SOLID,
+                             TopAbs_REVERSED, TopAbs_FORWARD)
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
 from OCC.Core.GeomAbs import (GeomAbs_Cylinder, GeomAbs_Plane, GeomAbs_Cone,
                                GeomAbs_Torus, GeomAbs_Line)
 
-# Eigene Module
-sys.path.insert(0, os.path.dirname(__file__))
-from output_schema import GearParameters
+# Eigene Module — plattformunabhängiger Pfad über pathlib
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from output_schema import GearParameters, ParameterValue, C
 from geometry_analyzer import analyze_gear_geometry
+from gear_metrology import extract_metrology
 
 
 # ─────────────────────────────────────────────
@@ -41,22 +46,56 @@ from geometry_analyzer import analyze_gear_geometry
 # ─────────────────────────────────────────────
 
 def load_step(filepath: str):
-    """Lädt eine STEP-Datei und gibt die OCC Shape zurück."""
-    if not os.path.exists(filepath):
-        print(f"[FEHLER] Datei nicht gefunden: {filepath}")
+    """
+    Lädt eine STEP-Datei robust und gibt die OCC-Shape zurück (oder None).
+
+    Hart gegen reale Exporte aus CATIA/NX/SolidWorks/Creo:
+      - prüft Lese- und Transfer-Status explizit,
+      - überträgt ALLE Roots (auch Baugruppen mit mehreren Solids),
+      - verifiziert, dass eine nicht-leere Geometrie mit Faces vorliegt,
+      - fängt jede Exception ab und protokolliert sie, statt abzustürzen.
+    """
+    path = Path(filepath)
+    if not path.is_file():
+        _log.error("STEP-Datei nicht gefunden: %s", path)
+        print(f"[FEHLER] Datei nicht gefunden: {path}")
         return None
 
-    reader = STEPControl_Reader()
-    status = reader.ReadFile(filepath)
+    try:
+        reader = STEPControl_Reader()
+        status = reader.ReadFile(str(path))
+        if status != IFSelect_RetDone:
+            _log.error("STEP-Datei nicht lesbar (Status=%s): %s", status, path)
+            print(f"[FEHLER] STEP-Datei konnte nicht gelesen werden: {path.name}")
+            return None
 
-    if status != IFSelect_RetDone:
-        print("[FEHLER] STEP-Datei konnte nicht gelesen werden.")
+        n_roots = reader.TransferRoots()      # alle Wurzeln (Baugruppen) übertragen
+        shape = reader.OneShape()
+        if shape is None or shape.IsNull():
+            _log.error("Keine übertragbare Geometrie in %s", path)
+            print(f"[FEHLER] STEP-Datei enthält keine Geometrie: {path.name}")
+            return None
+
+        # Plausibilität: mindestens eine Fläche vorhanden?
+        face_exp = TopExp_Explorer(shape, TopAbs_FACE)
+        if not face_exp.More():
+            _log.error("Geometrie ohne Flächen (evtl. nur Drahtmodell): %s", path)
+            print(f"[FEHLER] STEP-Datei enthält keine Flächen: {path.name}")
+            return None
+
+        solid_exp = TopExp_Explorer(shape, TopAbs_SOLID)
+        n_solids = 0
+        while solid_exp.More():
+            n_solids += 1
+            solid_exp.Next()
+        _log.info("Geladen: %s (Roots=%d, Solids=%d)", path.name, n_roots, n_solids)
+        print(f"  -> Geladen: {path.name}  (Roots={n_roots}, Solids={n_solids})")
+        return shape
+
+    except Exception as exc:  # noqa: BLE001 — defektes File darf nie abstürzen
+        _log.exception("Fehler beim Laden der STEP-Datei %s: %s", path, exc)
+        print(f"[FEHLER] Ausnahme beim Laden von {path.name}: {exc}")
         return None
-
-    reader.TransferRoots()
-    shape = reader.OneShape()
-    print(f"  -> Geladen: {filepath}")
-    return shape
 
 
 # ─────────────────────────────────────────────
@@ -103,20 +142,24 @@ def get_mass_properties(shape):
 def analyze_surfaces(shape):
     """
     Iteriert über alle Faces und klassifiziert Oberflächen.
+    Jede Face wird einzeln in try/except geschützt — fehlerhafte Faces werden
+    gezählt und in face_parse_success_rate zurückgegeben.
 
     Gibt zurück:
-        cylinders      : Liste von (radius_mm, is_inner)
-        planes         : Anzahl ebener Flächen
-        cones          : Liste von (semi_angle_rad, is_inner)
-        tori           : Liste von Torus-Minor-Radien (r_f-Kandidaten)
-        total_faces    : Gesamtzahl Faces
-        plane_z_coords : Z-Koordinaten der ebenen Flächen (für Flanschdetektion)
+        cylinders            : Liste von (radius_mm, is_inner)
+        planes               : Anzahl ebener Flächen
+        cones                : Liste von (semi_angle_rad, is_inner)
+        tori                 : Liste von Torus-Minor-Radien (r_f-Kandidaten)
+        total_faces          : Gesamtzahl Faces
+        plane_z_coords       : Z-Koordinaten der ebenen Flächen (für Flanschdetektion)
+        face_parse_success_rate : Anteil erfolgreich geparster Faces (0.0–1.0)
     """
     cylinders = []
     planes = 0
     cones = []
     tori = []
     total_faces = 0
+    failed_faces = 0
     plane_z_coords = []
 
     explorer = TopExp_Explorer(shape, TopAbs_FACE)
@@ -134,7 +177,6 @@ def analyze_surfaces(shape):
 
             elif stype == GeomAbs_Plane:
                 planes += 1
-                # Z-Position der Ebene für Flanschdetektion
                 try:
                     loc = surf.Plane().Location()
                     plane_z_coords.append(round(loc.Z(), 3))
@@ -142,20 +184,23 @@ def analyze_surfaces(shape):
                     pass
 
             elif stype == GeomAbs_Cone:
-                semi_angle = round(surf.Cone().SemiAngle(), 6)   # Halbkegelwinkel in Rad
+                semi_angle = round(surf.Cone().SemiAngle(), 6)
                 cones.append((semi_angle, is_inner))
 
             elif stype == GeomAbs_Torus:
-                # Minor-Radius = Fußrundungsradius r_f
                 minor_r = round(surf.Torus().MinorRadius(), 4)
                 if minor_r > 0:
                     tori.append(minor_r)
 
-        except Exception:
-            pass
+        except Exception as exc:
+            failed_faces += 1
+            _log.debug("Face %d classification failed: %s", total_faces, exc)
         explorer.Next()
 
-    return cylinders, planes, cones, tori, total_faces, plane_z_coords
+    face_parse_success_rate = (
+        (total_faces - failed_faces) / total_faces if total_faces > 0 else 1.0
+    )
+    return cylinders, planes, cones, tori, total_faces, plane_z_coords, face_parse_success_rate
 
 
 # ─────────────────────────────────────────────
@@ -444,57 +489,71 @@ def parse_step_file(input_path: str, output_path: str) -> GearParameters:
     if shape is None:
         raise ValueError(f"STEP-Datei konnte nicht geladen werden: {input_path}")
 
-    params = GearParameters(source_file=os.path.basename(input_path))
+    params = GearParameters(source_file=Path(input_path).name)
 
     # PRIO 1: Bounding Box & Masse
     print("[2/5] Bounding Box & Masse...")
     x, y, z = get_bounding_box(shape)
     params.bbox_x_mm, params.bbox_y_mm, params.bbox_z_mm = x, y, z
-    params.outer_diameter_mm = round(max(x, y), 4)
-    params.face_width_mm = round(z, 4)
-    params.total_width_mm = round(z, 4)   # wird ggf. in analyzer überschrieben
+    d_a_bbox = round(max(x, y), 4)
+    b_bbox   = round(z, 4)
+    # Bounding-Box ist verlässlich, aber nicht so präzise wie Zylinder-Fit
+    params.outer_diameter_mm = ParameterValue.make(d_a_bbox, "mm", round(C.DIRECT - 0.04, 2))
+    params.face_width_mm     = ParameterValue.make(b_bbox,   "mm", round(C.DIRECT - 0.04, 2))
+    params.total_width_mm    = ParameterValue.make(b_bbox,   "mm", round(C.DIRECT - 0.04, 2))
     params.extraction_notes["outer_diameter"] = "max(bbox_x, bbox_y) — Annahme: Z = Rotationsachse"
-    print(f"    d_a = {params.outer_diameter_mm} mm  |  b = {params.face_width_mm} mm")
+    print(f"    d_a = {d_a_bbox} mm  |  b = {b_bbox} mm")
 
-    params.volume_mm3, params.surface_area_mm2 = get_mass_properties(shape)
-    print(f"    V   = {params.volume_mm3} mm³  |  A = {params.surface_area_mm2} mm²")
+    vol, surf = get_mass_properties(shape)
+    params.volume_mm3       = ParameterValue.make(vol,  "mm3", C.DIRECT)
+    params.surface_area_mm2 = ParameterValue.make(surf, "mm2", C.DIRECT)
+    print(f"    V   = {vol} mm³  |  A = {surf} mm²")
 
     # PRIO 1+2: Flächen
     print("[3/5] Flächen analysieren...")
-    cylinders, planes, cones, tori, total_faces, plane_z_coords = analyze_surfaces(shape)
+    cylinders, planes, cones, tori, total_faces, plane_z_coords, face_parse_success_rate = (
+        analyze_surfaces(shape)
+    )
+    params.face_parse_success_rate = face_parse_success_rate
     print(f"    Faces: {total_faces}  |  Zylinder: {len(cylinders)}  |  "
-          f"Eben: {planes}  |  Kegel: {len(cones)}  |  Torus: {len(tori)}")
+          f"Eben: {planes}  |  Kegel: {len(cones)}  |  Torus: {len(tori)}  |  "
+          f"Parse-Rate: {face_parse_success_rate:.0%}")
 
     # Zylinder-Hierarchie: d_a, d_f, d_N direkt aus Geometrie
     outer_r, root_r, bore_r = extract_cylinder_hierarchy(cylinders)
     if outer_r is not None:
         d_a_direct = round(outer_r * 2, 4)
-        # Plausibilitätsprüfung gegen Bounding-Box-Wert
-        if abs(d_a_direct - params.outer_diameter_mm) / max(params.outer_diameter_mm, 1) < 0.05:
-            params.outer_diameter_mm = d_a_direct
+        d_a_bbox_val = params.outer_diameter_mm.value
+        if abs(d_a_direct - d_a_bbox_val) / max(d_a_bbox_val, 1) < 0.05:
+            # Zylinder-Messung ist präziser als Bounding-Box
+            params.outer_diameter_mm = ParameterValue.make(d_a_direct, "mm", C.DIRECT)
             params.extraction_notes["outer_diameter"] = "Direkt aus größtem Außenzylinder"
     if root_r is not None:
-        params.root_diameter_mm = round(root_r * 2, 4)
+        params.root_diameter_mm = ParameterValue.make(round(root_r * 2, 4), "mm", C.DIRECT)
         params.extraction_notes["root_diameter"] = "Direkt aus Geometrie (Zahnfuß-Zylinder)"
     if bore_r is not None:
-        params.hub_bore_diameter_mm = round(bore_r * 2, 4)
+        params.hub_bore_diameter_mm = ParameterValue.make(round(bore_r * 2, 4), "mm", C.DIRECT)
         params.extraction_notes["hub_bore"] = "Direkt aus kleinster Innenbohrung"
     else:
         params.warnings.append("Nabenbohrung nicht erkannt — ggf. Vollwelle oder kein Innen-Zylinder")
 
     # Torus → Fußrundungsradius r_f
     if tori:
-        # Typischster Wert: Median der Minor-Radien
         tori_sorted = sorted(tori)
         median_idx = len(tori_sorted) // 2
-        params.root_fillet_radius_mm = tori_sorted[median_idx]
+        params.root_fillet_radius_mm = ParameterValue.make(
+            tori_sorted[median_idx], "mm", round(C.DIRECT - 0.07, 2)
+        )
         params.extraction_notes["root_fillet"] = f"Median der {len(tori)} Torus-Minor-Radien"
 
     # Flansche
-    params.has_flanges = detect_flanges(plane_z_coords, params.face_width_mm)
+    params.has_flanges = detect_flanges(
+        plane_z_coords,
+        params.face_width_mm.value if isinstance(params.face_width_mm, ParameterValue) else params.face_width_mm
+    )
 
     if not cylinders:
-        params.confidence = 0.2
+        params.overall_confidence = 0.2
         params.warnings.append("Keine zylindrischen Flächen — möglicherweise kein Stirnrad")
 
     # PRIO 2: Kanten
@@ -504,9 +563,9 @@ def parse_step_file(input_path: str, output_path: str) -> GearParameters:
     print(f"    Kanten: {total_edges}  |  Passfedernut: {keyway_present}")
 
     # PRIO 2: Helix-Abtastung (3D-Kurven entlang Z-Achse)
-    edge_helix_data = extract_edge_helix_data(
-        shape, params.outer_diameter_mm / 2, params.face_width_mm
-    )
+    _outer_d = params.outer_diameter_mm.value if isinstance(params.outer_diameter_mm, ParameterValue) else params.outer_diameter_mm
+    _face_w  = params.face_width_mm.value if isinstance(params.face_width_mm, ParameterValue) else params.face_width_mm
+    edge_helix_data = extract_edge_helix_data(shape, _outer_d / 2, _face_w)
     print(f"    Helix-Kanten für β: {len(edge_helix_data)}")
 
     # PRIO 3: Metadaten
@@ -521,11 +580,22 @@ def parse_step_file(input_path: str, output_path: str) -> GearParameters:
     params.bore_fit = metadata["bore_fit"]
     print(f"    Name: {params.part_name or 'n/a'}  |  Material: {params.material or 'n/a'}")
 
+    # Direkte Vermessung (software-unabhängig, planare Querschnitte)
+    print("\n[Vermessung] Achse, Zahnkranz, Querschnitte...")
+    metrology = extract_metrology(shape)
+    if metrology.get("ok"):
+        print(f"    Zahnkranz erkannt: z={metrology['num_teeth']}  "
+              f"({metrology['band_sections']}/{metrology['total_sections']} Schnitte)")
+    else:
+        print("    Kein Zahnkranz vermessbar — Rückfall auf Heuristik")
+
     # Geometrie-Analyse (Schritt 2)
     print("\n[Geometrie-Analyse]...")
     params = analyze_gear_geometry(
         params, cylinders, planes, cones, tori,
-        total_edges, edge_helix_data, total_faces
+        total_edges, edge_helix_data, total_faces,
+        face_parse_success_rate=face_parse_success_rate,
+        metrology=metrology,
     )
 
     params.summary()

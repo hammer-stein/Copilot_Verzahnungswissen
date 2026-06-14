@@ -40,6 +40,10 @@ PARAM_MAP = {
     "face_width_mm":      ("basic_geometry", "face_width_mm"),
     "helix_angle_deg":    ("tooth_profile", "helix_angle_deg"),
     "pressure_angle_deg": ("tooth_profile", "pressure_angle_deg"),
+    "bore_diameter_mm":   ("basic_geometry", "hub_bore_diameter_mm"),
+    "overall_width_mm":   ("basic_geometry", "total_width_mm"),
+    "hub_diameter_mm":    ("basic_geometry", "hub_diameter_mm"),
+    "hub_width_mm":       ("basic_geometry", "hub_width_mm"),
 }
 
 EXACT_MATCH_PARAMS = {"gear_type", "num_teeth", "is_internal_gear"}
@@ -50,6 +54,9 @@ def _get_nested(data: dict, *keys):
         if not isinstance(data, dict):
             return None
         data = data.get(key)
+    # Entpackt ParameterValue-Dicts (Schema 2.0) auf ihren Rohwert
+    if isinstance(data, dict) and "value" in data:
+        return data["value"]
     return data
 
 
@@ -91,9 +98,10 @@ def run(step_dir: str, ground_truth_path: str, warn_pct: float, error_pct: float
 
     ground_truth = {k: v for k, v in raw.items() if not k.startswith("_")}
 
+    # rekursiv suchen — STEP-Dateien liegen nach Verzahnungstyp in Unterordnern
     available = {}
     for ext in ("*.stp", "*.step", "*.STP", "*.STEP"):
-        for p in Path(step_dir).glob(ext):
+        for p in Path(step_dir).rglob(ext):
             available[p.name] = str(p)
 
     testable = {n: available[n] for n in available if n in ground_truth}

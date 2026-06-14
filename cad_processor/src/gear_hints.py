@@ -17,10 +17,15 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from output_schema import GearParameters
+
+
+def _v(field_val: Any) -> Any:
+    """Gibt den Rohwert zurück — entpackt ParameterValue oder gibt plain value direkt zurück."""
+    return field_val.value if hasattr(field_val, "value") else field_val
 
 
 # ─────────────────────────────────────────────
@@ -76,7 +81,7 @@ GEAR_KNOWLEDGE: dict[str, GearKnowledge] = {
         ],
         optimization_rules=[
             OptimizationRule(
-                condition=lambda p: (p.num_teeth or 99) < 17,
+                condition=lambda p: (_v(p.num_teeth) or 99) < 17,
                 hint=(
                     "z < 17: Unterschnittgefahr bei Standardverzahnung. "
                     "Profilverschiebung x > 0 empfehlen (z. B. x ≈ 1 − z/17). "
@@ -86,10 +91,10 @@ GEAR_KNOWLEDGE: dict[str, GearKnowledge] = {
             ),
             OptimizationRule(
                 condition=lambda p: (
-                    p.face_width_mm and p.module_mm
-                    and p.face_width_mm > 0
-                    and p.module_mm > 0
-                    and (p.face_width_mm / p.module_mm) > 40
+                    _v(p.face_width_mm) and _v(p.module_mm)
+                    and _v(p.face_width_mm) > 0
+                    and _v(p.module_mm) > 0
+                    and (_v(p.face_width_mm) / _v(p.module_mm)) > 40
                 ),
                 hint=(
                     "b/m > 40: Zahnbreite sehr groß relativ zum Modul. "
@@ -100,9 +105,9 @@ GEAR_KNOWLEDGE: dict[str, GearKnowledge] = {
             ),
             OptimizationRule(
                 condition=lambda p: (
-                    p.face_width_mm and p.pitch_diameter_mm
-                    and p.pitch_diameter_mm > 0
-                    and p.face_width_mm > 2.5 * p.pitch_diameter_mm
+                    _v(p.face_width_mm) and _v(p.pitch_diameter_mm)
+                    and _v(p.pitch_diameter_mm) > 0
+                    and _v(p.face_width_mm) > 2.5 * _v(p.pitch_diameter_mm)
                 ),
                 hint=(
                     "b > 2,5 × d: Sehr große Zahnbreite relativ zum Teilkreis. "
@@ -112,7 +117,7 @@ GEAR_KNOWLEDGE: dict[str, GearKnowledge] = {
                 severity="warning",
             ),
             OptimizationRule(
-                condition=lambda p: (p.module_mm or 0) > 8 and (p.num_teeth or 0) > 30,
+                condition=lambda p: (_v(p.module_mm) or 0) > 8 and (_v(p.num_teeth) or 0) > 30,
                 hint=(
                     "Großer Modul (m > 8) bei hoher Zähnezahl: "
                     "Modul reduzieren und z erhöhen spart Material (kleinere Kopfhöhe) "
@@ -144,7 +149,7 @@ GEAR_KNOWLEDGE: dict[str, GearKnowledge] = {
         ],
         optimization_rules=[
             OptimizationRule(
-                condition=lambda p: (p.helix_angle_deg or 0) > 30,
+                condition=lambda p: (_v(p.helix_angle_deg) or 0) > 30,
                 hint=(
                     "β > 30°: Hohe Axialkraft (F_ax = F_t × tan β). "
                     "Pfeilverzahnung (Doppelschrägverzahnung, β gespiegelt) erwägen — "
@@ -153,7 +158,7 @@ GEAR_KNOWLEDGE: dict[str, GearKnowledge] = {
                 severity="warning",
             ),
             OptimizationRule(
-                condition=lambda p: (p.helix_angle_deg or 0) > 0 and (p.helix_angle_deg or 0) < 8,
+                condition=lambda p: (_v(p.helix_angle_deg) or 0) > 0 and (_v(p.helix_angle_deg) or 0) < 8,
                 hint=(
                     "β < 8°: Sehr kleiner Schrägungswinkel — Überdeckungsgewinn gering. "
                     "β ≥ 10° empfohlen für spürbaren Lärm- und Tragfähigkeitsvorteil."
@@ -299,10 +304,10 @@ GEAR_KNOWLEDGE: dict[str, GearKnowledge] = {
         optimization_rules=[
             OptimizationRule(
                 condition=lambda p: (
-                    p.num_teeth and p.hub_bore_diameter_mm
-                    and p.hub_bore_diameter_mm > 0
-                    and p.outer_diameter_mm > 0
-                    and (p.hub_bore_diameter_mm / p.outer_diameter_mm) > 0.85
+                    _v(p.num_teeth) and _v(p.hub_bore_diameter_mm)
+                    and _v(p.hub_bore_diameter_mm) > 0
+                    and _v(p.outer_diameter_mm) > 0
+                    and (_v(p.hub_bore_diameter_mm) / _v(p.outer_diameter_mm)) > 0.85
                 ),
                 hint=(
                     "Wanddicke sehr gering (d_N/d_a > 0,85). "
@@ -335,7 +340,7 @@ GEAR_KNOWLEDGE: dict[str, GearKnowledge] = {
         ],
         optimization_rules=[
             OptimizationRule(
-                condition=lambda p: (p.module_mm or 0) < 2 and (p.face_width_mm or 0) > 100,
+                condition=lambda p: (_v(p.module_mm) or 0) < 2 and (_v(p.face_width_mm) or 0) > 100,
                 hint=(
                     "Kleiner Modul (m < 2) bei langer Zahnstange: "
                     "Erhöhter Fertigungsaufwand. m ≥ 3 bei Länge > 100 mm prüfen."
@@ -358,7 +363,7 @@ def generate_gear_hints(params) -> dict:
     Gibt dict zurück mit: norms, applications, manufacturing, quality_checks, optimization.
     Gibt leeres dict zurück wenn Typ unbekannt.
     """
-    knowledge = GEAR_KNOWLEDGE.get(params.gear_type)
+    knowledge = GEAR_KNOWLEDGE.get(_v(params.gear_type))
     if not knowledge:
         return {}
 
