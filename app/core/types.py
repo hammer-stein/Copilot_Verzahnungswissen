@@ -101,6 +101,7 @@ class DocumentInfo:
 class AnswerSource(TypedDict):
     """Eine Quellenangabe innerhalb einer Antwort. Referenziert via qid ([Q1], [Q2], ...) im Antworttext."""
     qid: str
+    doc_hash: str
     source_path: str
     title: str
     page_number: int

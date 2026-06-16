@@ -74,6 +74,11 @@ class KnowledgeBaseIndexer:
         logger.info("set_document_folder doc_hash=%s folder=%s", doc_hash, folder or "-")
         self.store.set_document_folder(doc_hash, folder)
 
+    def set_document_title(self, doc_hash: str, title: str) -> None:
+        """Speichert einen Anzeigenamen für ein bereits indiziertes Dokument."""
+        logger.info("set_document_title doc_hash=%s title=%s", doc_hash, title)
+        self.store.set_document_title(doc_hash, title)
+
     def delete_document(self, doc_hash: str) -> None:
         """Löscht alle Chunks eines Dokuments aus Qdrant anhand des doc_hash."""
         logger.info("delete_document doc_hash=%s", doc_hash)

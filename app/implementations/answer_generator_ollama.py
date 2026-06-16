@@ -10,6 +10,7 @@ Antwort generieren – ausschließlich auf Basis der übergebenen Chunks (kein H
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any, Optional
 
 from app.core.types import Answer, RetrievedChunk
@@ -159,6 +160,29 @@ FORMAT_INSTRUCTIONS: dict[str, str] = {
 DEFAULT_FORMAT = "standard"
 
 
+def _source_title(chunk_source_path: str, metadata: dict[str, Any]) -> str:
+    """
+    Liefert einen nutzerfreundlichen Dokumenttitel für Quellenangaben.
+    Neu indexierte Dokumente tragen file_name in den Metadaten. Bei alten Indizes
+    darf der technische storage/uploads/<timestamp>_<uuid>.pdf-Pfad nicht in die UI.
+    """
+    for key in ("title", "file_name", "document_title", "original_filename"):
+        value = str((metadata or {}).get(key) or "").strip()
+        if value:
+            return value
+
+    name = Path(chunk_source_path or "").name.strip()
+    if not name:
+        return "Unbenanntes Dokument"
+
+    stem = Path(name).stem
+    generated_upload_name = re.fullmatch(r"\d{8}_\d{6}_[0-9a-fA-F]{16,}", stem)
+    if generated_upload_name:
+        return "Unbenanntes Dokument"
+
+    return name
+
+
 class OllamaAnswerGenerator:
     """Generiert Antworten auf Basis von Retriever-Chunks via LLM. Vollständig zustandslos."""
 
@@ -201,12 +225,13 @@ class OllamaAnswerGenerator:
         sources = []
         for idx, rc in enumerate(chunks, start=1):
             qid = f"Q{idx}"
-            source_title = str((rc.metadata or {}).get("file_name") or Path(rc.chunk.source_path).name)
+            source_title = _source_title(rc.chunk.source_path, rc.metadata or {})
             chunk_lines.append(f"[{qid}] Quelle: {source_title}, Seite {rc.chunk.page_number}")
             chunk_lines.append(rc.chunk.text.strip())
             chunk_lines.append("---")
             sources.append({
                 "qid": qid,
+                "doc_hash": rc.chunk.doc_hash,
                 "source_path": rc.chunk.source_path,
                 "title": source_title,
                 "page_number": rc.chunk.page_number,

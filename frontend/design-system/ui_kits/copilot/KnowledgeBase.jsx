@@ -4,7 +4,7 @@
    relative subfolder names. */
 function KnowledgeBase({
   documents, folders, busy, onClose,
-  onUpload, onCreateFolder, onDeleteFolder, onMoveDocument, onDeleteDocument,
+  onUpload, onCreateFolder, onDeleteFolder, onMoveDocument, onRenameDocument, onDeleteDocument,
 }) {
   const { Button, IconButton, Input, Select, Spinner } = window.VerzahnungsCopilotDesignSystem_c9990b;
   const [selectedFolder, setSelectedFolder] = React.useState('');
@@ -110,6 +110,24 @@ function KnowledgeBase({
       setNotice(`„${docTitle(doc)}“ verschoben.`);
     } catch (e) {
       setNotice(`Dokument konnte nicht verschoben werden: ${String(e.message || e)}`);
+    } finally {
+      setWorkingDoc('');
+    }
+  };
+
+  const renameDocument = async (doc) => {
+    const current = docTitle(doc);
+    const next = window.prompt('Dokumenttitel', current);
+    if (next === null) return;
+    const title = next.trim();
+    if (!title || title === current) return;
+    setWorkingDoc(doc.doc_hash);
+    setNotice('');
+    try {
+      await onRenameDocument(doc.doc_hash, title);
+      setNotice(`„${title}“ gespeichert.`);
+    } catch (e) {
+      setNotice(`Dokumenttitel konnte nicht gespeichert werden: ${String(e.message || e)}`);
     } finally {
       setWorkingDoc('');
     }
@@ -241,6 +259,9 @@ function KnowledgeBase({
                     onChange={(e) => moveDocument(doc, e.target.value)}
                     title="In Ordner verschieben"
                   />
+                  <IconButton size="sm" title="Dokumenttitel ändern" disabled={workingDoc === doc.doc_hash} onClick={() => renameDocument(doc)}>
+                    <Icon name="pencil" size={15} />
+                  </IconButton>
                   <IconButton size="sm" title="Dokument löschen" disabled={workingDoc === doc.doc_hash} onClick={() => deleteDocument(doc)}>
                     <Icon name="trash-2" size={15} />
                   </IconButton>

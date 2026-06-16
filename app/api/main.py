@@ -57,6 +57,10 @@ class MoveRequest(BaseModel):
     folder: str = ""  # Zielordner ("" = aus Ordner entfernen / kein Ordner)
 
 
+class TitleRequest(BaseModel):
+    title: str  # Anzeigename eines Dokuments
+
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.yaml"
 
@@ -202,6 +206,18 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
                 await asyncio.to_thread(folder_registry.add, folder)
             await asyncio.to_thread(indexer.set_document_folder, doc_hash, folder)
             return {"status": "moved", "doc_hash": doc_hash, "folder": folder}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/documents/{doc_hash}/title")
+    async def set_document_title(doc_hash: str, req: TitleRequest):
+        """Setzt den sichtbaren Dokumenttitel für Bibliothek und Quellenangaben."""
+        title = (req.title or "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Dokumenttitel darf nicht leer sein.")
+        try:
+            await asyncio.to_thread(indexer.set_document_title, doc_hash, title)
+            return {"status": "renamed", "doc_hash": doc_hash, "title": title}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

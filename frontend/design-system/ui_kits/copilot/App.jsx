@@ -128,13 +128,70 @@ function renderAnswer(text, Citation) {
   return <>{out}</>;
 }
 
+function isUnknownDocumentTitle(value) {
+  const text = String(value || '').trim();
+  return !text || /^(unbenanntes|unbekanntes) dokument$/i.test(text);
+}
+
+function generatedUploadBasename(value) {
+  const name = String(value || '').split(/[\\/]/).filter(Boolean).pop() || '';
+  const stem = name.replace(/\.[^.]+$/, '');
+  return /^\d{8}_\d{6}_[0-9a-f]{16,}$/i.test(stem);
+}
+
+function titleFromDocument(doc) {
+  if (!doc) return '';
+  const explicit = String(doc.file_name || doc.title || doc.document_title || doc.original_filename || '').trim();
+  if (!isUnknownDocumentTitle(explicit)) return explicit;
+  if (doc.source_path && !generatedUploadBasename(doc.source_path)) {
+    return String(doc.source_path).split(/[\\/]/).filter(Boolean).pop() || '';
+  }
+  return '';
+}
+
+function documentTitleIndex(documents) {
+  const byHash = new Map();
+  const byPath = new Map();
+  (documents || []).forEach((doc) => {
+    const title = titleFromDocument(doc);
+    if (!title) return;
+    const hash = String(doc.doc_hash || '').trim();
+    const path = String(doc.source_path || '').trim();
+    if (hash) byHash.set(hash, title);
+    if (path) byPath.set(path, title);
+  });
+  return { byHash, byPath };
+}
+
+function sourceLabel(source, titleIndex) {
+  const docHash = String(source.doc_hash || source.docHash || '').trim();
+  if (docHash && titleIndex && titleIndex.byHash && titleIndex.byHash.has(docHash)) {
+    return titleIndex.byHash.get(docHash);
+  }
+
+  const raw = String(source.source_path || source.sourcePath || source.source || '').trim();
+  if (raw && titleIndex && titleIndex.byPath && titleIndex.byPath.has(raw)) {
+    return titleIndex.byPath.get(raw);
+  }
+
+  const explicit = String(source.title || source.file_name || source.document_title || source.original_filename || '').trim();
+  if (!isUnknownDocumentTitle(explicit)) return explicit;
+
+  const name = raw.split(/[\\/]/).filter(Boolean).pop() || '';
+  if (!name) return 'Unbenanntes Dokument';
+
+  if (generatedUploadBasename(name)) return 'Unbenanntes Dokument';
+  return name;
+}
+
 /* Map backend AnswerSource[] → the {qid, source, page, similarity} shape SourceRow expects. */
-function toSources(sources) {
+function toSources(sources, documents) {
+  const titleIndex = documentTitleIndex(documents);
   return (sources || []).map((s) => {
     const n = parseInt(String(s.qid).replace(/\D/g, ''), 10);
     return {
       qid: Number.isFinite(n) ? n : s.qid,
-      source: s.title || s.source_path,
+      source: sourceLabel(s, titleIndex),
       sourcePath: s.source_path,
       page: s.page_number,
       similarity: s.similarity,
@@ -191,7 +248,11 @@ function App() {
   const refreshKnowledgeBase = React.useCallback(() => {
     fetch(`${API}/documents`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((docs) => setKnowledgeBase({ docs: Array.isArray(docs) ? docs.length : 0, status: 'ready' }))
+      .then((docs) => {
+        const list = Array.isArray(docs) ? docs : [];
+        setDocuments(list);
+        setKnowledgeBase({ docs: list.length, status: 'ready' });
+      })
       .catch(() => setKnowledgeBase({ docs: 0, status: 'error' }));
   }, []);
 
@@ -264,6 +325,18 @@ function App() {
     await fetch(`${API}/documents/${docHash}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: folder || '' }) });
     await refreshKb();
   };
+  const kbRenameDocument = async (docHash, title) => {
+    const r = await fetch(`${API}/documents/${docHash}/title`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => null);
+      throw new Error((j && j.detail) || `HTTP ${r.status}`);
+    }
+    await refreshKb();
+  };
   const kbDeleteDocument = async (docHash) => {
     await fetch(`${API}/documents/${docHash}`, { method: 'DELETE' });
     await refreshKb();
@@ -300,11 +373,22 @@ function App() {
         throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
       }
       const ans = (j.answers && j.answers[0]) || {};
+      let sourceDocuments = documents;
+      if ((!sourceDocuments || sourceDocuments.length === 0) && ans.sources && ans.sources.length) {
+        try {
+          const dRes = await fetch(`${API}/documents`);
+          const docs = dRes.ok ? await dRes.json() : [];
+          sourceDocuments = Array.isArray(docs) ? docs : [];
+          if (sourceDocuments.length) setDocuments(sourceDocuments);
+        } catch (e) {
+          console.warn('Dokumenttitel konnten nicht nachgeladen werden', e);
+        }
+      }
       appendMsg(chatId, {
         role: 'assistant',
         title: ans.question || text,
         body: renderAnswer(ans.answer_text, Citation),
-        sources: toSources(ans.sources),
+        sources: toSources(ans.sources, sourceDocuments),
       });
     } catch (e) {
       appendMsg(chatId, {
@@ -424,6 +508,7 @@ function App() {
             onCreateFolder={kbCreateFolder}
             onDeleteFolder={kbDeleteFolder}
             onMoveDocument={kbMoveDocument}
+            onRenameDocument={kbRenameDocument}
             onDeleteDocument={kbDeleteDocument}
           />
         ) : (

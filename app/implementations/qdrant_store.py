@@ -151,7 +151,7 @@ class QdrantStore:
             out.append(
                 SearchResult(
                     chunk=_payload_to_chunk(p),
-                    metadata=(p.get("metadata") or {}),
+                    metadata=_payload_to_metadata(p),
                     dense_score=dense_score,
                     sparse_score=sparse_score,
                     score=final_score,
@@ -179,6 +179,21 @@ class QdrantStore:
         self.client.set_payload(
             collection_name=self.collection_name,
             payload={"folder": str(folder or "")},
+            points=Filter(
+                must=[FieldCondition(key="doc_hash", match=MatchValue(value=doc_hash))]
+            ),
+        )
+
+    def set_document_title(self, doc_hash: str, title: str) -> None:
+        """
+        Speichert den Anzeigenamen eines Dokuments an allen Chunks. Die Quellenausgabe
+        nutzt später genau dieses Payload-Feld statt des anonymisierten Upload-Pfads.
+        """
+        if not self._collection_exists():
+            return
+        self.client.set_payload(
+            collection_name=self.collection_name,
+            payload={"file_name": str(title or "")},
             points=Filter(
                 must=[FieldCondition(key="doc_hash", match=MatchValue(value=doc_hash))]
             ),
@@ -240,6 +255,20 @@ def _payload_to_chunk(payload: dict[str, Any]):
         position=int(payload.get("position", 0) or 0),
         doc_hash=str(payload.get("doc_hash", "")),
     )
+
+
+def _payload_to_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Kombiniert die freie Chunk-Metadaten-Bag mit Dokument-Metadaten auf Top-Level.
+    Ältere Punkte enthalten file_name teilweise nur auf Top-Level; der AnswerGenerator
+    braucht diese Information für sprechende Quellen statt technischer Upload-Pfade.
+    """
+    metadata = dict(payload.get("metadata") or {})
+    for key in ("file_name", "folder", "doc_hash", "source_path"):
+        value = payload.get(key)
+        if value not in (None, "") and not metadata.get(key):
+            metadata[key] = value
+    return metadata
 
 
 def _sparse_dot(a: dict[str, float], b: dict[str, Any]) -> float:

@@ -870,7 +870,7 @@ body {
   padding: 8px 18px 28px;
 }
 .vc-libdoc {
-  display: grid; grid-template-columns: 34px minmax(0, 1fr) 180px 34px;
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) 180px 34px 34px;
   align-items: center; gap: 12px;
   padding: 10px 8px;
   border-bottom: 1px solid var(--border-subtle);
@@ -952,6 +952,6 @@ body {
   .vc-library__docs-head { align-items: flex-start; flex-direction: column; padding: 14px 16px; }
   .vc-library__actions { justify-content: flex-start; width: 100%; }
   .vc-libdocs { padding-left: 12px; padding-right: 12px; }
-  .vc-libdoc { grid-template-columns: 34px minmax(0, 1fr) 34px; }
+  .vc-libdoc { grid-template-columns: 34px minmax(0, 1fr) 34px 34px; }
   .vc-libdoc__move { grid-column: 2 / -1; width: 100%; }
 }
