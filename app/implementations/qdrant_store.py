@@ -89,14 +89,19 @@ class QdrantStore:
         points: list[PointStruct] = []
         for ec in chunks:
             c = ec.chunk
+            meta = ec.metadata or {}
             payload: dict[str, Any] = {
                 "text": c.text,
                 "source_path": c.source_path,
                 "page_number": c.page_number,
                 "position": c.position,
                 "doc_hash": c.doc_hash,
-                "metadata": ec.metadata or {},
+                "metadata": meta,
                 "sparse_vector": ec.sparse_vector or {},
+                # Dokument-Ebene: aus der Metadaten-Bag auf Top-Level gehoben, damit
+                # list_documents und set_document_folder sie ohne JSON-Parsing lesen/schreiben können.
+                "file_name": str(meta.get("file_name", "")),
+                "folder": str(meta.get("folder", "")),
             }
             # Stabiler Integer-ID über Prozesse hinweg.
             digest = hashlib.sha256(f"{c.doc_hash}:{c.position}".encode("utf-8")).digest()
@@ -163,6 +168,22 @@ class QdrantStore:
             ),
         )
 
+    def set_document_folder(self, doc_hash: str, folder: str) -> None:
+        """
+        Ordnet ein Dokument einem Ordner zu, indem das Payload-Feld "folder" für ALLE
+        Chunks dieses doc_hash gesetzt wird. set_payload aktualisiert nur die genannten
+        Felder; Text, Vektor und übrige Payload bleiben unangetastet.
+        """
+        if not self._collection_exists():
+            return
+        self.client.set_payload(
+            collection_name=self.collection_name,
+            payload={"folder": str(folder or "")},
+            points=Filter(
+                must=[FieldCondition(key="doc_hash", match=MatchValue(value=doc_hash))]
+            ),
+        )
+
     def list_documents(self) -> list[DocumentInfo]:
         """
         Gibt alle indizierten Dokumente mit Chunk-Anzahl zurück.
@@ -180,25 +201,33 @@ class QdrantStore:
                 collection_name=self.collection_name,
                 limit=256,
                 offset=offset,
-                with_payload=["source_path", "doc_hash"],
+                with_payload=["source_path", "doc_hash", "file_name", "folder"],
                 with_vectors=False,
             )
             for pt in points:
                 payload = pt.payload or {}
                 dh = str(payload.get("doc_hash", ""))
                 sp = str(payload.get("source_path", ""))
+                fn = str(payload.get("file_name", "") or "")
+                fld = str(payload.get("folder", "") or "")
                 if not dh:
                     continue
                 if dh not in docs:
-                    docs[dh] = DocumentInfo(source_path=sp, doc_hash=dh, chunk_count=1)
+                    docs[dh] = DocumentInfo(source_path=sp, doc_hash=dh, chunk_count=1, file_name=fn, folder=fld)
                 else:
                     prev = docs[dh]
-                    docs[dh] = DocumentInfo(source_path=prev.source_path or sp, doc_hash=dh, chunk_count=prev.chunk_count + 1)
+                    docs[dh] = DocumentInfo(
+                        source_path=prev.source_path or sp,
+                        doc_hash=dh,
+                        chunk_count=prev.chunk_count + 1,
+                        file_name=prev.file_name or fn,
+                        folder=prev.folder or fld,
+                    )
 
             if offset is None:  # keine weiteren Seiten
                 break
 
-        return sorted(docs.values(), key=lambda d: d.source_path)
+        return sorted(docs.values(), key=lambda d: (d.folder.casefold(), (d.file_name or d.source_path).casefold()))
 
 
 def _payload_to_chunk(payload: dict[str, Any]):

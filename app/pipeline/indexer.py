@@ -33,13 +33,16 @@ class KnowledgeBaseIndexer:
         self.embedder = embedder
         self.store = store
 
-    def index_pdf(self, file_path: Path) -> DocumentInfo:
+    def index_pdf(self, file_path: Path, *, file_name: str = "", folder: str = "") -> DocumentInfo:
         """
         Vollständige Indexierungs-Pipeline für eine PDF-Datei:
         laden → chunken → einbetten → in Qdrant speichern.
+        file_name ist der ursprüngliche Anzeigename (der gespeicherte Pfad ist anonymisiert);
+        folder ordnet das Dokument einem UI-Ordner zu ("" = kein Ordner).
         Gibt DocumentInfo mit chunk_count=0 zurück wenn keine Chunks erzeugt wurden.
         """
-        logger.info("loading_document path=%s", file_path)
+        display_name = file_name or file_path.name
+        logger.info("loading_document path=%s folder=%s", file_path, folder or "-")
         doc = self.loader.load(file_path)
 
         logger.info("chunking_document doc_hash=%s pages=%d", doc.doc_hash, len(doc.pages))
@@ -47,22 +50,29 @@ class KnowledgeBaseIndexer:
         logger.info("chunking_done doc_hash=%s chunks=%d", doc.doc_hash, len(chunks))
 
         if not chunks:
-            return DocumentInfo(source_path=str(file_path), doc_hash=doc.doc_hash, chunk_count=0)
+            return DocumentInfo(source_path=str(file_path), doc_hash=doc.doc_hash, chunk_count=0, file_name=display_name, folder=folder)
 
         logger.info("embedding_chunks doc_hash=%s count=%d", doc.doc_hash, len(chunks))
         embedding_result = self.embedder.embed([c.text for c in chunks])  # ein Batch für alle Chunks
         vectors = embedding_result.dense_vectors
         sparse_vectors = embedding_result.sparse_vectors or [None] * len(chunks)
 
+        # file_name/folder als Dokument-Metadaten an jedem Chunk; QdrantStore hebt sie auf Top-Level.
+        doc_meta = {"file_name": display_name, "folder": folder}
         embedded: list[EmbeddedChunk] = [
-            EmbeddedChunk(chunk=c, dense_vector=v, sparse_vector=sv, metadata={})
+            EmbeddedChunk(chunk=c, dense_vector=v, sparse_vector=sv, metadata=dict(doc_meta))
             for c, v, sv in zip(chunks, vectors, sparse_vectors)
         ]
 
         logger.info("upserting_chunks doc_hash=%s count=%d", doc.doc_hash, len(embedded))
         self.store.upsert(embedded)
 
-        return DocumentInfo(source_path=str(file_path), doc_hash=doc.doc_hash, chunk_count=len(embedded))
+        return DocumentInfo(source_path=str(file_path), doc_hash=doc.doc_hash, chunk_count=len(embedded), file_name=display_name, folder=folder)
+
+    def set_document_folder(self, doc_hash: str, folder: str) -> None:
+        """Verschiebt ein Dokument in einen anderen UI-Ordner (delegiert an den VectorStore)."""
+        logger.info("set_document_folder doc_hash=%s folder=%s", doc_hash, folder or "-")
+        self.store.set_document_folder(doc_hash, folder)
 
     def delete_document(self, doc_hash: str) -> None:
         """Löscht alle Chunks eines Dokuments aus Qdrant anhand des doc_hash."""

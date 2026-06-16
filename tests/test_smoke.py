@@ -1,5 +1,16 @@
 from pathlib import Path
 
+from app.implementations.answer_generator_ollama import OllamaAnswerGenerator
+
+
+class _PromptClient:
+    def __init__(self):
+        self.prompt = ""
+
+    def generate(self, *, model, prompt, temperature=None, max_tokens=None):
+        self.prompt = prompt
+        return "Aus den CAD-Daten beantwortet. [CAD]"
+
 
 def test_repo_has_config_and_prompts():
     root = Path(__file__).resolve().parents[1]
@@ -12,6 +23,38 @@ def test_answer_prompt_has_required_placeholders():
     text = (root / "prompts" / "answer_system_prompt.txt").read_text(encoding="utf-8")
     for placeholder in ("{DOMAIN}", "{CAD_METADATA_JSON}", "{CHUNKS_BLOCK}", "{QUESTION}", "{FORMAT}"):
         assert placeholder in text
+
+
+def test_answer_generator_keeps_cad_context_when_no_chunks(tmp_path):
+    prompt_path = tmp_path / "prompt.txt"
+    prompt_path.write_text(
+        "{DOMAIN}\nBAUTEILDATEN:\n{CAD_METADATA_JSON}\n"
+        "WISSENSAUSZÜGE:\n{CHUNKS_BLOCK}\nFRAGE:\n{QUESTION}\n{FORMAT}",
+        encoding="utf-8",
+    )
+    generator = OllamaAnswerGenerator(
+        model_name="test",
+        base_url="http://ollama.invalid",
+        timeout_s=1,
+        prompt_path=prompt_path,
+        domain_name="Verzahnung",
+        max_tokens=128,
+        temperature=0.0,
+    )
+    client = _PromptClient()
+    generator.client = client
+
+    answer = generator.generate(
+        question="Welche interne CAD-Notiz ist hinterlegt?",
+        chunks=[],
+        cad_metadata={"metadata": {"part_name": "Demo"}, "analysis": {"custom_tooth_note": "nur CAD"}},
+        answer_format="kurz",
+    )
+
+    assert answer["sources"] == []
+    assert "Derzeit liegen keine Wissensauszüge vor" in client.prompt
+    assert "Vollständiges CAD-JSON" in client.prompt
+    assert '"custom_tooth_note": "nur CAD"' in client.prompt
 
 
 def test_synthetic_cad_testdata_exists_and_is_consistent():

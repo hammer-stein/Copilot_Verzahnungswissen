@@ -1,5 +1,5 @@
 /* Left sidebar: brand, new chat, chat history, active part + RAG status. */
-function Sidebar({ chats, activePart, knowledgeBase, activeChat, onSelectChat, onNewChat, onHome, onUploadStep }) {
+function Sidebar({ chats, activePart, knowledgeBase, activeChat, kbOpen, onSelectChat, onNewChat, onHome, onUploadStep, onManageKb }) {
   const { Button, IconButton, Spinner } = window.VerzahnungsCopilotDesignSystem_c9990b;
   const stepInput = React.useRef(null);
   const groups = {};
@@ -46,7 +46,7 @@ function Sidebar({ chats, activePart, knowledgeBase, activeChat, onSelectChat, o
         <input
           ref={stepInput}
           type="file"
-          accept=".step,.stp,.stp242,.p21,.iges,.igs,model/step"
+          accept=".step,.stp,.stp242,.p21,.iges,.igs,.json,model/step,application/json"
           style={{ display: 'none' }}
           onChange={onStepChosen}
         />
@@ -67,23 +67,23 @@ function Sidebar({ chats, activePart, knowledgeBase, activeChat, onSelectChat, o
           <button className="vc-upload" onClick={pickStep}>
             <span className="vc-upload__ico"><Icon name="box" size={18} /></span>
             <span className="vc-upload__main">
-              <span className="vc-upload__title">CAD / STEP hochladen</span>
-              <span className="vc-upload__hint">.step · .stp · .iges — klicken oder ablegen</span>
+              <span className="vc-upload__title">CAD / STEP / JSON laden</span>
+              <span className="vc-upload__hint">.step · .stp · .iges · .json — klicken oder ablegen</span>
             </span>
             <Icon name="upload" size={16} />
           </button>
         )}
 
         <div className="vc-sidebar__label" style={{ marginTop: 20 }}>Wissensbasis</div>
-        <div className="vc-kb">
+        <button className={'vc-kb vc-kb--btn' + (kbOpen ? ' vc-kb--active' : '')} onClick={onManageKb} title="Wissensbasis verwalten">
           <span className="vc-kb__ico"><Icon name="database" size={16} /></span>
           <div className="vc-kb__main">
             <div className="vc-kb__title">RAG-Wissensbasis verbunden</div>
-            <div className="vc-kb__meta">{knowledgeBase.docs.toLocaleString('de-DE')} Dokumente indexiert</div>
+            <div className="vc-kb__meta">{knowledgeBase.docs.toLocaleString('de-DE')} Dokumente · verwalten</div>
           </div>
-          <span className="vc-kb__dot" />
-        </div>
-        <p className="vc-kb__note">Die Wissensbasis wird nicht vollständig angezeigt. Pro Antwort erscheinen nur die tatsächlich verwendeten Quellen.</p>
+          <Icon name="settings-2" size={15} />
+        </button>
+        <p className="vc-kb__note">Dokumente und Ordner verwalten: hinzufügen, verschieben, löschen. Pro Antwort erscheinen nur die tatsächlich verwendeten Quellen.</p>
       </div>
 
       <div className="vc-sidebar__foot">

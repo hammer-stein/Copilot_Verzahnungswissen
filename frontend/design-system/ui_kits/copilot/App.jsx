@@ -11,33 +11,45 @@ const EMPTY_GEAR = {
   fusskreis: '—', zahnbreite: '—', werkstoff: '—', haerte: '—', qualitaet: '—',
 };
 
-/* Map raw backend cad_metadata → the stringified gear shape the UI renders. */
+/* German labels for the GearParameters gear_type enum. */
+const GEAR_TYPE_LABELS = {
+  spur: 'Stirnrad', helical: 'Schrägverzahnung', bevel: 'Kegelrad',
+  internal: 'Innenverzahnung', worm: 'Schnecke', rack: 'Zahnstange',
+};
+
+/* Map raw backend cad_metadata (GearParameters nested format from cad_processor /
+   the synthetic test JSONs) → the stringified gear shape the UI renders. */
 function toGear(cad) {
   if (!cad || typeof cad !== 'object' || Object.keys(cad).length === 0) return null;
-  const s = (v) => (v === null || v === undefined ? '—' : String(v));
+  const s = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
+  const tp = cad.tooth_profile || {};
+  const geo = cad.basic_geometry || {};
+  const mc = cad.material_context || {};
   return {
-    verzahnungstyp: s(cad.verzahnungstyp),
-    modul: s(cad.modul),
-    zaehnezahl: s(cad.zaehnezahl),
-    eingriffswinkel: s(cad.eingriffswinkel),
-    schraegungswinkel: s(cad.schraegungswinkel),
-    profilverschiebung: s(cad.profilverschiebung),
-    teilkreis: s(cad.teilkreisdurchmesser),
-    kopfkreis: s(cad.kopfkreisdurchmesser),
-    fusskreis: s(cad.fusskreisdurchmesser),
-    zahnbreite: s(cad.zahnbreite),
-    werkstoff: s(cad.werkstoff),
-    haerte: s(cad.haerte),
-    qualitaet: s(cad.verzahnungsqualitaet),
+    verzahnungstyp: cad.gear_type ? (GEAR_TYPE_LABELS[cad.gear_type] || cad.gear_type) : '—',
+    modul: s(tp.module_mm),
+    zaehnezahl: s(tp.num_teeth),
+    eingriffswinkel: s(tp.pressure_angle_deg),
+    schraegungswinkel: s(tp.helix_angle_deg),
+    profilverschiebung: s(tp.profile_shift_x),
+    teilkreis: s(geo.pitch_diameter_mm),
+    kopfkreis: s(geo.outer_diameter_mm),
+    fusskreis: s(geo.root_diameter_mm),
+    zahnbreite: s(geo.face_width_mm),
+    werkstoff: s(mc.material),
+    haerte: s(mc.tolerance_class),
+    qualitaet: s(mc.quality_class_din),
   };
 }
 
-/* Inline markdown within a single text run: [Q#] → Citation chip, **bold** → <strong>. */
+/* Inline markdown within a single text run: [Q#] → Citation chip, [CAD] → CAD chip,
+   **bold** → <strong>. [CAD] marks facts the LLM derived from the Bauteildaten. */
 function renderInline(text, Citation, keyPrefix) {
-  return String(text).split(/(\[Q\d+\]|\*\*[^*]+\*\*)/g).map((tok, i) => {
+  return String(text).split(/(\[Q\d+\]|\[CAD\]|\*\*[^*]+\*\*)/g).map((tok, i) => {
     const key = keyPrefix + '-' + i;
     const cite = tok.match(/^\[Q(\d+)\]$/);
     if (cite) return <Citation key={key} qid={Number(cite[1])} />;
+    if (tok === '[CAD]') return <span key={key} className="vc-cadchip" title="Aus den Bauteildaten (CAD)">CAD</span>;
     const bold = tok.match(/^\*\*([^*]+)\*\*$/);
     if (bold) return <strong key={key}>{bold[1]}</strong>;
     if (!tok) return null;
@@ -122,7 +134,8 @@ function toSources(sources) {
     const n = parseInt(String(s.qid).replace(/\D/g, ''), 10);
     return {
       qid: Number.isFinite(n) ? n : s.qid,
-      source: s.source_path,
+      source: s.title || s.source_path,
+      sourcePath: s.source_path,
       page: s.page_number,
       similarity: s.similarity,
     };
@@ -131,6 +144,19 @@ function toSources(sources) {
 
 const PDF_RE = /\.pdf$/i;
 const STEP_RE = /\.(step|stp|stp242|p21|iges|igs)$/i;
+const JSON_RE = /\.json$/i;
+
+function relativeFolder(file) {
+  const rel = file && file.webkitRelativePath ? String(file.webkitRelativePath) : '';
+  const parts = rel.split('/').map((p) => p.trim()).filter(Boolean);
+  return parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+}
+
+function joinFolder(base, child) {
+  const left = String(base || '').trim().replace(/^\/+|\/+$/g, '');
+  const right = String(child || '').trim().replace(/^\/+|\/+$/g, '');
+  return [left, right].filter(Boolean).join('/');
+}
 
 function App() {
   const D = window.VC_DATA;
@@ -155,6 +181,12 @@ function App() {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   }, [dark]);
 
+  /* Knowledge-base management state (modal): full document list + folders. */
+  const [kbOpen, setKbOpen] = React.useState(false);
+  const [documents, setDocuments] = React.useState([]);
+  const [folders, setFolders] = React.useState([]);
+  const [kbBusy, setKbBusy] = React.useState(false);
+
   /* Load the indexed-document count for the knowledge-base status panel. */
   const refreshKnowledgeBase = React.useCallback(() => {
     fetch(`${API}/documents`)
@@ -164,6 +196,78 @@ function App() {
   }, []);
 
   React.useEffect(() => { refreshKnowledgeBase(); }, [refreshKnowledgeBase]);
+
+  /* Load full document list + folder list for the management modal. */
+  const refreshKb = React.useCallback(async () => {
+    setKbBusy(true);
+    try {
+      const [dRes, fRes] = await Promise.all([fetch(`${API}/documents`), fetch(`${API}/folders`)]);
+      const docs = dRes.ok ? await dRes.json() : [];
+      const fold = fRes.ok ? await fRes.json() : { folders: [] };
+      setDocuments(Array.isArray(docs) ? docs : []);
+      setFolders((fold && fold.folders) || []);
+      setKnowledgeBase({ docs: Array.isArray(docs) ? docs.length : 0, status: 'ready' });
+    } catch (e) {
+      console.error('Wissensbasis konnte nicht geladen werden', e);
+    } finally {
+      setKbBusy(false);
+    }
+  }, []);
+
+  const openKb = () => { setKbOpen(true); refreshKb(); };
+
+  /* KB actions — each refreshes the list afterwards. */
+  const kbUpload = async (files, folder, opts = {}) => {
+    const list = Array.from(files || []).filter((file) => PDF_RE.test(file.name));
+    if (list.length === 0) return { uploaded: 0, failed: 0 };
+    let uploaded = 0;
+    let failed = 0;
+    setKbBusy(true);
+    try {
+      for (const file of list) {
+        const uploadFolder = opts.preserveFolders
+          ? joinFolder(folder, relativeFolder(file))
+          : (folder || '');
+        try {
+          await uploadFile(file, uploadFolder, { refresh: false, throwOnError: true });
+          uploaded += 1;
+        } catch (e) {
+          failed += 1;
+          console.error('PDF-Upload fehlgeschlagen', file.name, e);
+        }
+      }
+    } finally {
+      await refreshKb();
+      setKbBusy(false);
+    }
+    return { uploaded, failed };
+  };
+  const kbCreateFolder = async (name) => {
+    const r = await fetch(`${API}/folders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    if (!r.ok) {
+      const j = await r.json().catch(() => null);
+      throw new Error((j && j.detail) || `HTTP ${r.status}`);
+    }
+    const j = await r.json().catch(() => null);
+    if (j && Array.isArray(j.folders)) {
+      setFolders(j.folders);
+    } else {
+      setFolders((prev) => Array.from(new Set([...(prev || []), name])).sort((a, b) => a.localeCompare(b, 'de')));
+    }
+    await refreshKb();
+  };
+  const kbDeleteFolder = async (name) => {
+    await fetch(`${API}/folders/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    await refreshKb();
+  };
+  const kbMoveDocument = async (docHash, folder) => {
+    await fetch(`${API}/documents/${docHash}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: folder || '' }) });
+    await refreshKb();
+  };
+  const kbDeleteDocument = async (docHash) => {
+    await fetch(`${API}/documents/${docHash}`, { method: 'DELETE' });
+    await refreshKb();
+  };
 
   const messages = activeChat ? (transcripts[activeChat] || []) : [];
 
@@ -222,21 +326,48 @@ function App() {
   const newChat = () => { setActiveChat(null); };
 
   /* File upload from sidebar/composer.
-     - PDF  → /upload  (adds to the RAG knowledge base)
+     - PDF  → /upload  (adds to the RAG knowledge base; optional target folder)
+     - JSON → parsed client-side as a GearParameters part → cad_metadata (test data)
      - STEP → /cad/analyze (CAD processor → cad_metadata for the active part) */
-  const uploadFile = async (file) => {
+  const uploadFile = async (file, folder = '', options = {}) => {
     if (!file) return;
+    const shouldRefresh = options.refresh !== false;
 
     if (PDF_RE.test(file.name)) {
       const fd = new FormData();
       fd.append('file', file);
+      if (folder) fd.append('folder', folder);
       try {
         const r = await fetch(`${API}/upload`, { method: 'POST', body: fd });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json().catch(() => null);
+        if (!r.ok) {
+          const detail = j && (j.detail || j.message) ? (j.detail || j.message) : `HTTP ${r.status}`;
+          throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+        }
+        return j;
       } catch (e) {
         console.error('PDF-Upload fehlgeschlagen', e);
+        if (options.throwOnError) throw e;
       } finally {
-        refreshKnowledgeBase();
+        if (shouldRefresh) refreshKnowledgeBase();
+      }
+      return;
+    }
+
+    /* GearParameters test JSON → load directly as the active part (no server round-trip). */
+    if (JSON_RE.test(file.name)) {
+      setActivePart({ name: file.name, status: 'indexing' });
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (!parsed || typeof parsed !== 'object' || (!parsed.gear_type && !parsed.tooth_profile)) {
+          throw new Error('Keine gültigen GearParameters (gear_type / tooth_profile fehlen).');
+        }
+        setCadMeta(parsed);
+        setActivePart({ name: file.name, status: 'ready' });
+      } catch (e) {
+        console.error('JSON-Bauteil konnte nicht geladen werden', e);
+        setActivePart({ name: file.name, status: 'error', error: String(e.message || e) });
       }
       return;
     }
@@ -264,33 +395,55 @@ function App() {
     }
   };
 
+  /* While the knowledge-base manager is open it takes over the whole main area
+     (chat, composer and inspector are hidden) — focused document/folder work. */
+  const showInspector = inspectorOpen && !kbOpen;
+
   return (
-    <div className={'vc-shell' + (inspectorOpen ? ' vc-shell--inspector' : '') + (sidebarOpen ? ' vc-shell--sidebar-open' : '')}>
+    <div className={'vc-shell' + (showInspector ? ' vc-shell--inspector' : '') + (sidebarOpen ? ' vc-shell--sidebar-open' : '')}>
       <Sidebar
         chats={chats}
         activePart={activePart}
         knowledgeBase={knowledgeBase}
         activeChat={activeChat}
-        onSelectChat={(id) => { setActiveChat(id); setSidebarOpen(false); }}
-        onNewChat={newChat}
-        onHome={goHome}
+        kbOpen={kbOpen}
+        onSelectChat={(id) => { setActiveChat(id); setKbOpen(false); setSidebarOpen(false); }}
+        onNewChat={() => { setKbOpen(false); newChat(); }}
+        onHome={() => { setKbOpen(false); goHome(); }}
         onUploadStep={uploadFile}
+        onManageKb={openKb}
       />
       <div className="vc-main">
-        <TopBar
-          gear={gearView}
-          dark={dark}
-          onToggleTheme={() => setDark((v) => !v)}
-          inspectorOpen={inspectorOpen}
-          onToggleInspector={() => setInspectorOpen((v) => !v)}
-          onToggleSidebar={() => setSidebarOpen((v) => !v)}
-        />
-        {messages.length === 0
-          ? <EmptyState onPick={send} />
-          : <ChatView key={activeChat} messages={messages} generating={generating} />}
-        <Composer onSend={send} format={format} onFormat={setFormat} formats={D.formats} onUploadStep={uploadFile} />
+        {kbOpen ? (
+          <KnowledgeBase
+            documents={documents}
+            folders={folders}
+            busy={kbBusy}
+            onClose={() => setKbOpen(false)}
+            onUpload={kbUpload}
+            onCreateFolder={kbCreateFolder}
+            onDeleteFolder={kbDeleteFolder}
+            onMoveDocument={kbMoveDocument}
+            onDeleteDocument={kbDeleteDocument}
+          />
+        ) : (
+          <>
+            <TopBar
+              gear={gearView}
+              dark={dark}
+              onToggleTheme={() => setDark((v) => !v)}
+              inspectorOpen={inspectorOpen}
+              onToggleInspector={() => setInspectorOpen((v) => !v)}
+              onToggleSidebar={() => setSidebarOpen((v) => !v)}
+            />
+            {messages.length === 0
+              ? <EmptyState onPick={send} />
+              : <ChatView key={activeChat} messages={messages} generating={generating} />}
+            <Composer onSend={send} format={format} onFormat={setFormat} formats={D.formats} onUploadStep={uploadFile} />
+          </>
+        )}
       </div>
-      {inspectorOpen && <Inspector gear={gearView} hasPart={!!cadMeta} onClose={() => setInspectorOpen(false)} />}
+      {showInspector && <Inspector gear={gearView} raw={cadMeta} hasPart={!!cadMeta} onClose={() => setInspectorOpen(false)} />}
       {sidebarOpen && <div className="vc-scrim" onClick={() => setSidebarOpen(false)} />}
     </div>
   );
