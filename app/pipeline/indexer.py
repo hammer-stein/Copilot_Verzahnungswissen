@@ -1,19 +1,16 @@
 """
 pipeline/indexer.py – Orchestriert den gesamten Indexierungsprozess.
 
-Verbindet Loader, Chunker, Embedder, MetadataExtractor und VectorStore zur
-Indexierungs-Pipeline: PDF → Chunks → Embeddings + Metadaten → Qdrant.
-Wird von API-Endpunkt POST /upload aufgerufen.
+Verbindet Loader, Chunker, Embedder und VectorStore zur Indexierungs-Pipeline:
+PDF → Chunks → Embeddings → Qdrant. Wird von API-Endpunkt POST /upload aufgerufen.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Optional
 
-from app.core.interfaces import Chunker, DocumentLoader, Embedder, MetadataExtractor, VectorStore
-from app.core.schema import MetadataSchema, load_schema
+from app.core.interfaces import Chunker, DocumentLoader, Embedder, VectorStore
 from app.core.types import DocumentInfo, EmbeddedChunk
 
 logger = logging.getLogger(__name__)
@@ -28,33 +25,24 @@ class KnowledgeBaseIndexer:
         loader: DocumentLoader,
         chunker: Chunker,
         embedder: Embedder,
-        metadata_extractor: MetadataExtractor,
         store: VectorStore,
-        schema_path: Path,
     ) -> None:
-        """Alle Komponenten werden per Dependency Injection übergeben. Schema wird lazy geladen."""
+        """Alle Komponenten werden per Dependency Injection übergeben."""
         self.loader = loader
         self.chunker = chunker
         self.embedder = embedder
-        self.metadata_extractor = metadata_extractor
         self.store = store
-        self.schema_path = schema_path
-        self._schema: Optional[MetadataSchema] = None
 
-    @property
-    def schema(self) -> MetadataSchema:
-        """Lädt das Domänenschema beim ersten Aufruf (lazy, einmalig gecacht)."""
-        if self._schema is None:
-            self._schema = load_schema(self.schema_path)
-        return self._schema
-
-    def index_pdf(self, file_path: Path) -> DocumentInfo:
+    def index_pdf(self, file_path: Path, *, file_name: str = "", folder: str = "") -> DocumentInfo:
         """
         Vollständige Indexierungs-Pipeline für eine PDF-Datei:
-        laden → chunken → Metadaten extrahieren → einbetten → in Qdrant speichern.
+        laden → chunken → einbetten → in Qdrant speichern.
+        file_name ist der ursprüngliche Anzeigename (der gespeicherte Pfad ist anonymisiert);
+        folder ordnet das Dokument einem UI-Ordner zu ("" = kein Ordner).
         Gibt DocumentInfo mit chunk_count=0 zurück wenn keine Chunks erzeugt wurden.
         """
-        logger.info("loading_document path=%s", file_path)
+        display_name = file_name or file_path.name
+        logger.info("loading_document path=%s folder=%s", file_path, folder or "-")
         doc = self.loader.load(file_path)
 
         logger.info("chunking_document doc_hash=%s pages=%d", doc.doc_hash, len(doc.pages))
@@ -62,28 +50,29 @@ class KnowledgeBaseIndexer:
         logger.info("chunking_done doc_hash=%s chunks=%d", doc.doc_hash, len(chunks))
 
         if not chunks:
-            return DocumentInfo(source_path=str(file_path), doc_hash=doc.doc_hash, chunk_count=0)
-
-        # Metadaten per LLM extrahieren und gegen Schema bereinigen
-        meta_list: list[dict[str, Any]] = []
-        for c in chunks:
-            raw_meta = self.metadata_extractor.extract(c, self.schema) or {}
-            meta_list.append(_sanitize_metadata(self.schema, raw_meta))
+            return DocumentInfo(source_path=str(file_path), doc_hash=doc.doc_hash, chunk_count=0, file_name=display_name, folder=folder)
 
         logger.info("embedding_chunks doc_hash=%s count=%d", doc.doc_hash, len(chunks))
         embedding_result = self.embedder.embed([c.text for c in chunks])  # ein Batch für alle Chunks
         vectors = embedding_result.dense_vectors
         sparse_vectors = embedding_result.sparse_vectors or [None] * len(chunks)
 
-        # Chunks, Vektoren und Metadaten zu EmbeddedChunks zusammenführen
-        embedded: list[EmbeddedChunk] = []
-        for c, v, sv, m in zip(chunks, vectors, sparse_vectors, meta_list):
-            embedded.append(EmbeddedChunk(chunk=c, dense_vector=v, sparse_vector=sv, metadata=m))
+        # file_name/folder als Dokument-Metadaten an jedem Chunk; QdrantStore hebt sie auf Top-Level.
+        doc_meta = {"file_name": display_name, "folder": folder}
+        embedded: list[EmbeddedChunk] = [
+            EmbeddedChunk(chunk=c, dense_vector=v, sparse_vector=sv, metadata=dict(doc_meta))
+            for c, v, sv in zip(chunks, vectors, sparse_vectors)
+        ]
 
         logger.info("upserting_chunks doc_hash=%s count=%d", doc.doc_hash, len(embedded))
         self.store.upsert(embedded)
 
-        return DocumentInfo(source_path=str(file_path), doc_hash=doc.doc_hash, chunk_count=len(embedded))
+        return DocumentInfo(source_path=str(file_path), doc_hash=doc.doc_hash, chunk_count=len(embedded), file_name=display_name, folder=folder)
+
+    def set_document_folder(self, doc_hash: str, folder: str) -> None:
+        """Verschiebt ein Dokument in einen anderen UI-Ordner (delegiert an den VectorStore)."""
+        logger.info("set_document_folder doc_hash=%s folder=%s", doc_hash, folder or "-")
+        self.store.set_document_folder(doc_hash, folder)
 
     def delete_document(self, doc_hash: str) -> None:
         """Löscht alle Chunks eines Dokuments aus Qdrant anhand des doc_hash."""
@@ -93,21 +82,3 @@ class KnowledgeBaseIndexer:
     def list_documents(self) -> list[DocumentInfo]:
         """Gibt alle indizierten Dokumente mit Chunk-Anzahl zurück (delegiert an VectorStore)."""
         return self.store.list_documents()
-
-
-def _sanitize_metadata(schema: MetadataSchema, data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Filtert LLM-Ausgaben auf erlaubte Schema-Felder. Verhindert, dass das LLM
-    erfundene Felder in den Qdrant-Payload schreibt, die den Filter stören könnten.
-    """
-    # erlaubte Felder: Feldnamen + range_fields (z.B. modul_min, modul_max)
-    allowed: set[str] = set()
-    for f in schema.fields:
-        allowed.add(f.name)
-        if f.range_fields:
-            allowed.update(f.range_fields)
-        else:
-            allowed.add(f"{f.name}_min")
-            allowed.add(f"{f.name}_max")
-
-    return {k: v for k, v in (data or {}).items() if k in allowed}

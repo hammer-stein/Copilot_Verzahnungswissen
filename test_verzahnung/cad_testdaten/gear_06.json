@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "source_file": "gear_06.step",
+  "gear_type": "helical",
+  "confidence": 0.95,
+  "basic_geometry": {
+    "outer_diameter_mm": 111.116,
+    "root_diameter_mm": 99.866,
+    "pitch_diameter_mm": 106.116,
+    "face_width_mm": 32.5,
+    "total_width_mm": 32.5,
+    "hub_bore_diameter_mm": 26.5,
+    "volume_mm3": 297231.4,
+    "surface_area_mm2": 30739.4
+  },
+  "tooth_profile": {
+    "num_teeth": 41,
+    "module_mm": 2.5,
+    "helix_angle_deg": 15.0,
+    "pressure_angle_deg": 20.0,
+    "tooth_height_mm": 5.625,
+    "addendum_mm": 2.5,
+    "dedendum_mm": 3.125,
+    "profile_shift_x": 0.0,
+    "root_fillet_radius_mm": 0.95,
+    "tooth_thickness_mm": 3.927
+  },
+  "topology": {
+    "is_internal_gear": false,
+    "symmetry_type": "rotational",
+    "cone_angle_deg": null,
+    "shaft_angle_deg": null,
+    "worm_starts": null,
+    "keyway_present": true,
+    "has_flanges": false
+  },
+  "material_context": {
+    "material": "18CrNiMo7-6",
+    "mass_kg": 2.333,
+    "bore_fit": null,
+    "quality_class_din": 6,
+    "norm_reference": [
+      "DIN 867",
+      "DIN 3960",
+      "DIN ISO 1328"
+    ],
+    "tolerance_class": null,
+    "surface_roughness_ra": null
+  },
+  "metadata": {
+    "part_name": "Testzahnrad gear_06",
+    "part_number": "TEST-GEAR_06",
+    "created_by": null
+  },
+  "extraction_quality": {
+    "warnings": [],
+    "extraction_notes": {
+      "synthetic": "Erzeugt von generate_testdata.py, kein echtes STEP-Parsing."
+    },
+    "bbox_mm": {
+      "x": 111.116,
+      "y": 111.116,
+      "z": 32.5
+    }
+  },
+  "hints": {}
+}

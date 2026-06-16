@@ -1,9 +1,75 @@
 from pathlib import Path
 
+from app.implementations.answer_generator_ollama import OllamaAnswerGenerator
 
-def test_repo_has_config_and_prompt():
+
+class _PromptClient:
+    def __init__(self):
+        self.prompt = ""
+
+    def generate(self, *, model, prompt, temperature=None, max_tokens=None):
+        self.prompt = prompt
+        return "Aus den CAD-Daten beantwortet. [CAD]"
+
+
+def test_repo_has_config_and_prompts():
     root = Path(__file__).resolve().parents[1]
     assert (root / "config.yaml").exists()
-    assert (root / "schemas" / "gears.yaml").exists()
     assert (root / "prompts" / "answer_system_prompt.txt").exists()
 
+
+def test_answer_prompt_has_required_placeholders():
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "prompts" / "answer_system_prompt.txt").read_text(encoding="utf-8")
+    for placeholder in ("{DOMAIN}", "{CAD_METADATA_JSON}", "{CHUNKS_BLOCK}", "{QUESTION}", "{FORMAT}"):
+        assert placeholder in text
+
+
+def test_answer_generator_keeps_cad_context_when_no_chunks(tmp_path):
+    prompt_path = tmp_path / "prompt.txt"
+    prompt_path.write_text(
+        "{DOMAIN}\nBAUTEILDATEN:\n{CAD_METADATA_JSON}\n"
+        "WISSENSAUSZÜGE:\n{CHUNKS_BLOCK}\nFRAGE:\n{QUESTION}\n{FORMAT}",
+        encoding="utf-8",
+    )
+    generator = OllamaAnswerGenerator(
+        model_name="test",
+        base_url="http://ollama.invalid",
+        timeout_s=1,
+        prompt_path=prompt_path,
+        domain_name="Verzahnung",
+        max_tokens=128,
+        temperature=0.0,
+    )
+    client = _PromptClient()
+    generator.client = client
+
+    answer = generator.generate(
+        question="Welche interne CAD-Notiz ist hinterlegt?",
+        chunks=[],
+        cad_metadata={"metadata": {"part_name": "Demo"}, "analysis": {"custom_tooth_note": "nur CAD"}},
+        answer_format="kurz",
+    )
+
+    assert answer["sources"] == []
+    assert "Derzeit liegen keine Wissensauszüge vor" in client.prompt
+    assert "Vollständiges CAD-JSON" in client.prompt
+    assert '"custom_tooth_note": "nur CAD"' in client.prompt
+
+
+def test_synthetic_cad_testdata_exists_and_is_consistent():
+    root = Path(__file__).resolve().parents[1]
+    data_dir = root / "test_verzahnung" / "cad_testdaten"
+    files = sorted(data_dir.glob("gear_*.json"))
+    assert len(files) == 10
+
+    import json
+    for f in files:
+        d = json.loads(f.read_text(encoding="utf-8"))
+        assert d["gear_type"] in ("spur", "helical", "bevel", "internal", "worm", "rack")
+        tp = d["tooth_profile"]
+        geo = d["basic_geometry"]
+        # Geometrie-Konsistenz: d = m_t * z (Stirnmodul bei Schraegverzahnung)
+        import math
+        m_t = tp["module_mm"] / math.cos(math.radians(tp["helix_angle_deg"] or 0.0))
+        assert abs(geo["pitch_diameter_mm"] - m_t * tp["num_teeth"]) < 0.01

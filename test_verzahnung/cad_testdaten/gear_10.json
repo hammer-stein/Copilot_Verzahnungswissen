@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "source_file": "gear_10.step",
+  "gear_type": "bevel",
+  "confidence": 0.95,
+  "basic_geometry": {
+    "outer_diameter_mm": 105.0,
+    "root_diameter_mm": 89.25,
+    "pitch_diameter_mm": 98.0,
+    "face_width_mm": 31.5,
+    "total_width_mm": 31.5,
+    "hub_bore_diameter_mm": 24.5,
+    "volume_mm3": 257908.8,
+    "surface_area_mm2": 27708.8
+  },
+  "tooth_profile": {
+    "num_teeth": 28,
+    "module_mm": 3.5,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "tooth_height_mm": 7.875,
+    "addendum_mm": 3.5,
+    "dedendum_mm": 4.375,
+    "profile_shift_x": 0.0,
+    "root_fillet_radius_mm": 1.33,
+    "tooth_thickness_mm": 5.498
+  },
+  "topology": {
+    "is_internal_gear": false,
+    "symmetry_type": "rotational",
+    "cone_angle_deg": 45.0,
+    "shaft_angle_deg": 90.0,
+    "worm_starts": null,
+    "keyway_present": true,
+    "has_flanges": false
+  },
+  "material_context": {
+    "material": "C45",
+    "mass_kg": 2.025,
+    "bore_fit": null,
+    "quality_class_din": 8,
+    "norm_reference": [
+      "DIN 867",
+      "DIN 3960",
+      "DIN ISO 1328"
+    ],
+    "tolerance_class": null,
+    "surface_roughness_ra": null
+  },
+  "metadata": {
+    "part_name": "Testzahnrad gear_10",
+    "part_number": "TEST-GEAR_10",
+    "created_by": null
+  },
+  "extraction_quality": {
+    "warnings": [],
+    "extraction_notes": {
+      "synthetic": "Erzeugt von generate_testdata.py, kein echtes STEP-Parsing."
+    },
+    "bbox_mm": {
+      "x": 105.0,
+      "y": 105.0,
+      "z": 31.5
+    }
+  },
+  "hints": {}
+}

@@ -43,7 +43,7 @@ function Answer({ title, children, sources }) {
     <div className="vc-answer-wrap">
       {title && <div className="vc-answer-title">{title}</div>}
       <div className="vc-answer">{children}</div>
-      {sources && <SourcesAccordion sources={sources} />}
+      {sources && sources.length > 0 && <SourcesAccordion sources={sources} />}
     </div>
   );
 }

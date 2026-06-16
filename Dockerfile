@@ -11,11 +11,11 @@ ENV PYTHONUNBUFFERED=1 \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Anwendungscode + Frontend (inkl. frontend/design-system = neues GUI) + Domänendateien.
+# Anwendungscode + Frontend (inkl. frontend/design-system = neues GUI) + Prompts.
 COPY app/ app/
 COPY frontend/ frontend/
-COPY schemas/ schemas/
 COPY prompts/ prompts/
+COPY test_verzahnung/cad_testdaten/ test_verzahnung/cad_testdaten/
 
 EXPOSE 8000
 

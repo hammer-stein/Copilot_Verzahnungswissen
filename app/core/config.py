@@ -19,7 +19,6 @@ from pydantic import BaseModel, Field
 class DomainConfig(BaseModel):
     """Domänenspezifische Konfiguration – ändert sich beim Wechsel auf eine neue Fachdomäne (z.B. Lager)."""
     name: str           # Anzeigename, wird als {DOMAIN} in den LLM-Prompt eingesetzt
-    schema_path: str    # Pfad zur Metadaten-Schema-YAML (z.B. "schemas/gears.yaml")
     prompt_path: str    # Pfad zum Antwort-Prompt-Template
 
 
@@ -45,23 +44,16 @@ class ChunkerConfig(BaseModel):
     overlap_sentences: int = 1
 
 
-class MetadataExtractorConfig(BaseModel):
-    """Konfiguration des LLM-Aufrufs für die Metadatenextraktion pro Chunk."""
-    implementation: Literal["llama_ollama"]
-    model_name: str
-    ollama_url: str = "http://localhost:11434"
-    max_retries: int = 3
-    timeout_s: int = 30
-
-
 class CADAdapterConfig(BaseModel):
     """
-    Wählt den CAD-Adapter. "random_gear_stub" generiert Zufallsdaten (Demo/Test);
-    "cad_processor_http" sendet STEP-Dateien an den cad_processor-Service (Port 8001).
+    Wählt die CAD-Datenquelle (Schalter synthetisch/echt):
+    "synthetic_json"     = liest die synthetischen Testdatensätze aus synthetic_data_dir
+    "cad_processor_http" = sendet STEP-Dateien an den cad_processor-Service (Port 8001)
     """
-    implementation: Literal["random_gear_stub", "cad_processor_http"]
+    implementation: Literal["synthetic_json", "cad_processor_http"]
     url: str = "http://localhost:8001"
     timeout_s: int = 120
+    synthetic_data_dir: str = "test_verzahnung/cad_testdaten"
 
 
 class VectorStoreConfig(BaseModel):
@@ -79,25 +71,24 @@ class VectorStoreConfig(BaseModel):
 
 class RetrieverConfig(BaseModel):
     """
-    Steuert den zweistufigen Retriever: Stage-1-Filter (Metadaten) und Stage-2-Vektorsuche.
-    stage1_relax_on_empty lockert Range-Filter schrittweise wenn zu wenige Treffer gefunden werden.
+    Steuert den Hybrid-Retriever: Dense-Vektorsuche, optional kombiniert mit
+    lexikalischen Sparse-Scores (use_hybrid). candidate_multiplier bestimmt,
+    wie viele Dense-Kandidaten vor dem Sparse-Reranking geholt werden.
     """
-    stage1_strict: bool = True
-    stage1_relax_on_empty: bool = True
-    stage1_min_candidates: int = 5     # unter diesem Wert wird der Filter gelockert
-    stage2_top_k: int = 5
-    stage2_min_similarity: float = 0.65
-    stage2_use_hybrid: bool = True
+    top_k: int = 5
+    min_similarity: float = 0.5
+    use_hybrid: bool = True
     hybrid_dense_weight: float = 0.7
     hybrid_sparse_weight: float = 0.3
-    reranker_enabled: bool = False
-    reranker_model: Optional[str] = None
+    candidate_multiplier: int = Field(default=8, ge=1)
 
 
 class AnswerGeneratorConfig(BaseModel):
     """Konfiguration des LLM-Aufrufs für die Antwortgenerierung."""
     implementation: Literal["llama_ollama"]
     model_name: str
+    ollama_url: str = "http://localhost:11434"
+    timeout_s: int = 120
     max_tokens: int = 800
     temperature: float = 0.2  # niedrig = faktenorientiert, deterministisch
 
@@ -114,7 +105,6 @@ class AppConfig(BaseModel):
     domain: DomainConfig
     embedder: EmbedderConfig
     chunker: ChunkerConfig
-    metadata_extractor: MetadataExtractorConfig
     cad_adapter: CADAdapterConfig
     vector_store: VectorStoreConfig
     retriever: RetrieverConfig
@@ -147,6 +137,6 @@ def load_config(path: Path) -> AppConfig:
         cad["url"] = os.environ["CAD_PROCESSOR_URL"]
         cad["implementation"] = "cad_processor_http"  # echten CAD-Service statt Stub nutzen
     if os.getenv("OLLAMA_URL"):
-        raw.setdefault("metadata_extractor", {})["ollama_url"] = os.environ["OLLAMA_URL"]
+        raw.setdefault("answer_generator", {})["ollama_url"] = os.environ["OLLAMA_URL"]
 
     return AppConfig.model_validate(raw)
