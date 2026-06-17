@@ -13,6 +13,7 @@ from typing import List, Tuple, Optional, Any
 
 from output_schema import GearParameters, ParameterValue, C
 from gear_hints import generate_gear_hints
+from gear_metrology import _round_module
 
 
 # ─────────────────────────────────────────────
@@ -286,10 +287,12 @@ NORM_MAP = {
     "spur":       ["DIN 867", "DIN ISO 1328-1", "ISO 1122-1"],
     "helical":    ["DIN 867", "DIN ISO 1328-1", "ISO 1122-1"],
     "bevel":      ["DIN 868", "DIN ISO 17485", "ISO 23509"],
+    "miter":      ["DIN 868", "DIN 3971", "DIN ISO 17485", "ISO 23509"],
     "internal":   ["DIN 867", "DIN ISO 1328-1"],
     "worm":       ["DIN 3975", "ISO 1122-2"],
     "worm_wheel": ["DIN 3975", "ISO 1122-2"],
     "rack":       ["DIN 867", "DIN 3960"],
+    "ratchet":    [],   # Sägezahn-Sperrrad — keine eigenständige Verzahnungsnorm
     "unknown":    ["DIN 867"],
 }
 
@@ -303,6 +306,23 @@ def assign_norm_reference(gear_type: Optional[str]) -> list:
 # ─────────────────────────────────────────────
 # Primärquelle: direkte Vermessung (gear_metrology)
 # ─────────────────────────────────────────────
+
+# Standard-Teilkegelwinkel γ von 1:1-Gehrungsrädern → Achswinkel Σ = 2·γ.
+#   γ=22.5° → Σ=45°    γ=30° → Σ=60°    γ=45° → Σ=90°    γ=60° → Σ=120°
+MITER_HALF_ANGLES = [22.5, 30.0, 45.0, 60.0]
+
+
+def _snap_miter_cone(gamma_tip: float) -> Optional[float]:
+    """
+    Rastet den grob gemessenen Kopfkegelwinkel (γ_tip = γ + Kopfwinkel θ_a, also
+    systematisch einige Grad ÜBER dem Teilkegelwinkel γ) auf den nächsten Standard-
+    Teilkegelwinkel eines Gehrungsrads. Im Halbwinkel-Raster (22.5/30/45/60) ist der
+    θ_a-Versatz nur halb so groß wie im Achswinkel-Raster (2·γ) und wird von den
+    Lücken sicher absorbiert. Gibt γ zurück oder None (kein Standardwinkel).
+    """
+    nearest = min(MITER_HALF_ANGLES, key=lambda a: abs(a - gamma_tip))
+    return nearest if abs(nearest - gamma_tip) <= 7.0 else None
+
 
 def _apply_metrology(params: GearParameters, m: dict) -> bool:
     """
@@ -322,10 +342,23 @@ def _apply_metrology(params: GearParameters, m: dict) -> bool:
     is_bevel = bool(m["is_bevel"])
     is_ratchet = bool(m.get("is_ratchet"))
     helix = m.get("helix_angle_deg")
+    gamma = m.get("cone_angle_deg")
+
+    # ── Gehrungsrad (Miter) = Kegelrad mit Übersetzung 1:1 ────────
+    # Ein einzelnes Gehrungsrad ist geometrisch nicht zwingend vom Kegelritzel
+    # zu unterscheiden (gleicher Teilkegel). Sicher rein geometrisch erkennbar ist
+    # nur der klassische 90°-Fall über γ≈45°; abweichende Achswinkel (60°/45°)
+    # werden zusätzlich über die STEP-Bauteilbezeichnung ("miter") aufgelöst.
+    name_text = f"{params.source_file or ''} {params.part_name or ''}".lower()
+    name_is_miter = "miter" in name_text or "gehrung" in name_text
+    geo_is_miter = is_bevel and gamma is not None and 40.0 <= gamma <= 50.0
+    is_miter = is_bevel and (geo_is_miter or name_is_miter)
 
     # ── Verzahnungstyp aus gemessener Geometrie ───────────────────
     if is_ratchet:
         gear_type = "ratchet"
+    elif is_miter:
+        gear_type = "miter"
     elif is_bevel:
         gear_type = "bevel"
     elif is_internal:
@@ -341,9 +374,38 @@ def _apply_metrology(params: GearParameters, m: dict) -> bool:
     params.extraction_notes["method"] = (
         "Direkte Vermessung über planare Querschnitte — herstellerunabhängig"
     )
-    if is_bevel and m.get("cone_angle_deg") is not None:
-        params.cone_angle_deg = ParameterValue.make(m["cone_angle_deg"], "°", C.CALC)
-        params.shaft_angle_deg = ParameterValue.make(90.0, "°", C.FALLBACK)
+    cone_val = None
+    if is_bevel and gamma is not None:
+        if is_miter:
+            # Der gemessene Kegelwinkel ist der GRÖSSTE koaxiale Kegel — bei
+            # Achswinkel Σ<90° (γ<45°) der RÜCKENKEGEL 90°−γ. Für ein Gehrungsrad
+            # mit Σ≤90° gilt daher Teilkegelwinkel γ = min(γ_mess, 90°−γ_mess); auf
+            # den nächsten Standard-Teilkegelwinkel rasten, sonst Messwert direkt.
+            gamma_pitch = min(gamma, 90.0 - gamma)
+            g_snap = _snap_miter_cone(gamma_pitch)
+            cone_val = g_snap if g_snap is not None else round(gamma_pitch, 2)
+            shaft_val = round(2.0 * cone_val, 1)
+            params.cone_angle_deg = ParameterValue.make(cone_val, "°", C.CALC)
+            params.shaft_angle_deg = ParameterValue.make(shaft_val, "°", C.CALC)
+            params.extraction_notes["shaft_angle"] = (
+                "Gehrungsrad (1:1): Achswinkel Σ = 2·Teilkegelwinkel γ"
+            )
+        else:
+            # Allgemeines Kegelrad: Teilkegelwinkel direkt, Achswinkel ohne Gegenrad
+            # nicht bestimmbar → Standardannahme 90°.
+            params.cone_angle_deg = ParameterValue.make(round(gamma, 2), "°", C.CALC)
+            params.shaft_angle_deg = ParameterValue.make(90.0, "°", C.FALLBACK)
+
+    # ── Modul beim Gehrungsrad mit korrigiertem Teilkegelwinkel nachrechnen ──
+    # Die Metrologie bildet das Modul mit dem größten (Rücken-)Kegel; bei Σ<90°
+    # überhöht das m_raw = d_a/(z+2·cosγ) minimal und rundet fälschlich auf das
+    # zöllige Nachbarmodul (z. B. 1,5875 statt 1,5). Mit dem echten Teilkegel-
+    # winkel γ_korr trifft die Rundung das metrische Normmodul. Pitch d = m·z folgt.
+    if is_miter and cone_val is not None and d_a > 0:
+        m_raw = d_a / (z + 2 * math.cos(math.radians(cone_val)))
+        mod_corr, _ = _round_module(m_raw)
+        if mod_corr:
+            mod = mod_corr
 
     # ── Direkt gemessene Größen ───────────────────────────────────
     params.num_teeth = ParameterValue.make(int(z), "", C.DIRECT)

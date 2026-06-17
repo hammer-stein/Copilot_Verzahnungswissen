@@ -44,6 +44,8 @@ PARAM_MAP = {
     "overall_width_mm":   ("basic_geometry", "total_width_mm"),
     "hub_diameter_mm":    ("basic_geometry", "hub_diameter_mm"),
     "hub_width_mm":       ("basic_geometry", "hub_width_mm"),
+    "cone_angle_deg":     ("topology", "cone_angle_deg"),
+    "shaft_angle_deg":    ("topology", "shaft_angle_deg"),
 }
 
 EXACT_MATCH_PARAMS = {"gear_type", "num_teeth", "is_internal_gear"}

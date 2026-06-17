@@ -199,10 +199,90 @@ GEAR_KNOWLEDGE: dict[str, GearKnowledge] = {
                 severity="warning",
             ),
             OptimizationRule(
-                condition=lambda p: (p.cone_angle_deg or 45) != 45,
+                condition=lambda p: abs((_v(p.cone_angle_deg) or 45) - 45) > 1.0,
                 hint=(
-                    "Kegelwinkel ≠ 45°: Achswinkel ist nicht 90°. "
+                    "Teilkegelwinkel ≠ 45°: Achswinkel ist nicht 90° bzw. Übersetzung ≠ 1:1. "
                     "Prüfen, ob Getriebe-Gehäuse für diesen Achswinkel ausgelegt ist."
+                ),
+                severity="info",
+            ),
+        ],
+    ),
+
+    "miter": GearKnowledge(
+        gear_type="miter",
+        norms=["DIN 868", "DIN 3971", "DIN ISO 17485", "ISO 23509"],
+        applications=[
+            "Gehrungsrad = Kegelrad mit Übersetzung 1:1 (beide Räder gleiche Zähnezahl)",
+            "Reine Achsumlenkung ohne Drehzahl-/Drehmomentwandlung (i = 1)",
+            "Standard-Achswinkel 90° (Teilkegelwinkel γ = 45°); auch 60° und 45° lieferbar",
+            "Stellantriebe, Handkurbeln, Messgeräte, Förder- und Antriebstechnik",
+        ],
+        manufacturing=[
+            "Geradverzahnt: Kegelradhobeln/-fräsen im Teilverfahren",
+            "Bogenverzahnt für ruhigeren Lauf: Gleason- oder Klingelnberg-Verfahren",
+            "Läppen als Feinbearbeitung — Laufpaarung immer paarweise einlaufen lassen",
+            "Beide Räder eines Gehrungspaars sind baugleich (1:1) und untereinander tauschbar",
+        ],
+        quality_checks=[
+            "Tragbild beider Räder prüfen (Kontaktfleckenverteilung)",
+            "Achswinkel und Montageabstand (mounting distance) am Getriebe kontrollieren",
+            "Zahnspiel im montierten Zustand messen",
+        ],
+        optimization_rules=[
+            OptimizationRule(
+                condition=lambda p: True,
+                hint=(
+                    "Gehrungsräder als baugleiches 1:1-Paar betreiben — "
+                    "beide Räder besitzen identische Geometrie (z, m, γ)."
+                ),
+                severity="info",
+            ),
+            OptimizationRule(
+                condition=lambda p: abs((_v(p.shaft_angle_deg) or 90) - 90) > 1.0,
+                hint=(
+                    "Achswinkel ≠ 90°: Sonderausführung (z. B. 60° oder 45°). "
+                    "Gehäuse- und Lageranordnung müssen auf diesen Achswinkel ausgelegt sein."
+                ),
+                severity="info",
+            ),
+            OptimizationRule(
+                condition=lambda p: (_v(p.num_teeth) or 99) < 14,
+                hint=(
+                    "Sehr kleine Zähnezahl (z < 14) bei Kegel-/Gehrungsrad: "
+                    "Unterschnitt- und Spitzwerden-Gefahr — Profilverschiebung prüfen."
+                ),
+                severity="warning",
+            ),
+        ],
+    ),
+
+    "ratchet": GearKnowledge(
+        gear_type="ratchet",
+        norms=[],   # keine eigenständige Verzahnungsnorm — kein Wälzgetriebe
+        applications=[
+            "Ratschen-/Sperrrad: Sägezahnkranz, der mit einer Klinke nur eine "
+            "Drehrichtung zulässt (Freilauf in der Gegenrichtung)",
+            "Ratschen, Winden, Seilzüge, Rücklaufsperren, Spann- und Aufziehmechanismen",
+            "KEIN Evolventen-Zahnrad — überträgt kein Drehmoment über Wälzeingriff",
+            "Aussagekräftige Kenngrößen: Zähnezahl z, Außendurchmesser, Zahnteilung",
+        ],
+        manufacturing=[
+            "Sägezahnkontur durch Fräsen, Drahterodieren, Laserschneiden oder Stanzen (Blech)",
+            "Sintern für Großserien",
+            "Steile Sperrflanke (nahezu radial) und flache Gleitflanke auslegen",
+        ],
+        quality_checks=[
+            "Selbsthemmung der Klinke an der Sperrflanke prüfen (Druckwinkel)",
+            "Zahnfußfestigkeit gegen stoßartige Klinken-Sperrlast",
+            "Härte/Verschleißfestigkeit der Sperrflanke",
+        ],
+        optimization_rules=[
+            OptimizationRule(
+                condition=lambda p: True,
+                hint=(
+                    "Sägezahn-Sperrrad: Modul, Eingriffswinkel und Teilkreis sind hier "
+                    "ohne Bedeutung — Auslegung erfolgt über Sperrflankenwinkel und Klinke."
                 ),
                 severity="info",
             ),

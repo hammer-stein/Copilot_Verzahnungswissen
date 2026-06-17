@@ -58,6 +58,12 @@ INCH_MODULES = [round(25.4 / dp, 4) for dp in DIAMETRAL_PITCHES]
 # Vereinigte, sortierte Kandidatenliste (metrisch + zöllig) für die Rundung
 ALL_MODULES = sorted(set(STANDARD_MODULES) | set(INCH_MODULES))
 
+# Schnittzahl-Grenzen. Untergrenze sichert die volle Abdeckung des Zahnkranz-
+# bandes (bei Kegel-/Gehrungsrädern oft nur ~⅓ der Achslänge); Obergrenze deckelt
+# die Rechenzeit bei sehr großen B-Reps.
+MIN_SECTIONS = 28
+MAX_SECTIONS = 72
+
 
 # ─────────────────────────────────────────────────────────────
 # Achsen- und Frame-Bestimmung
@@ -274,6 +280,34 @@ def _percentile(xs: List[float], p: float) -> float:
     return s[k]
 
 
+def _stratified_order(n: int) -> List[int]:
+    """
+    Bearbeitungsreihenfolge der Schnitt-Indizes [0..n-1], die bei JEDEM Präfix die
+    gesamte Achslänge möglichst gleichmäßig abdeckt (rekursive Halbierung: erst die
+    Enden/Mitte, dann progressiv feiner).
+
+    Wichtig für die Robustheit unter Last: Bei achsparalleler Reihenfolge liegt der
+    Zahnkranz oft in der zweiten Längenhälfte; ein zeitbedingter Abbruch verfehlt ihn
+    dann komplett (→ kein Band → Heuristik-Müll). In stratifizierter Reihenfolge ist
+    auch ein abgebrochener Lauf über die ganze Länge verteilt — der Zahnkranz wird
+    (nur gröber) immer noch getroffen.
+    """
+    order: List[int] = []
+    seen = set()
+    step = n
+    while step > 1:
+        step = max(1, step // 2)
+        for i in range(0, n, step):
+            if i not in seen:
+                order.append(i)
+                seen.add(i)
+    for i in range(n):                      # Rest auffüllen (Vollständigkeit)
+        if i not in seen:
+            order.append(i)
+            seen.add(i)
+    return order
+
+
 def _profile_asymmetry(prof: List[float]) -> float:
     """
     Asymmetrie-Maß des Radialprofils r(θ): Verhältnis der mittleren Anstiegs-
@@ -393,8 +427,8 @@ def _round_module(m_raw: float) -> Tuple[float, bool]:
     return round(m_raw, 3), False
 
 
-def extract_metrology(shape, n_sections: int = 60, NA: int = 720,
-                      time_budget_s: float = 60.0) -> Dict[str, Any]:
+def extract_metrology(shape, n_sections: int = 48, NA: int = 720,
+                      time_budget_s: float = 120.0) -> Dict[str, Any]:
     """
     Vermisst die Verzahnung über planare Querschnitte. Gibt ein Dict zurück:
 
@@ -426,27 +460,37 @@ def extract_metrology(shape, n_sections: int = 60, NA: int = 720,
         result["com"] = com
 
         # Sampling-Abstand entlang der Schnittkanten ~ feine Winkelauflösung
-        spacing = max(0.03, 2 * math.pi * rmax / 1440)
+        spacing = max(0.03, 2 * math.pi * rmax / 1000)
 
-        # Performance-Schutz: Bei großen/komplexen B-Reps ist jeder exakte
-        # Schnitt (BRepAlgoAPI_Section) teuer. Kosten an EINEM Probe-Schnitt
-        # messen und die Schnittzahl an das Zeitbudget anpassen — gleichmäßig
-        # über die Länge verteilt (volle Abdeckung, nur grobere Auflösung),
-        # statt unbegrenzt zu rechnen.
+        # Performance-Schutz: Jeder exakte Schnitt (BRepAlgoAPI_Section) ist bei
+        # großen/komplexen B-Reps teuer — und der TEUERSTE Bereich ist der Zahnkranz
+        # (viele Schnittkanten je Schnitt), nicht die glatte Nabe. Daher die Kosten
+        # an MEHREREN Positionen messen und das MAXIMUM verwenden. Eine einzelne
+        # Probe in der Nabe unterschätzt die Kosten sonst grob: die Schnittzahl
+        # bleibt zu hoch, der Lauf läuft ins Zeitlimit und bricht MITTEN im Zahnkranz
+        # ab → zu kurzes Band → Vermessung schlägt fehl → schlechter Heuristik-Fallback.
         t_start = time.time()
-        _probe = _section_points(shape, com, axis, u, v, zmin + 0.5 * length, spacing)
-        sec_cost = max(1e-3, time.time() - t_start)
+        probe_costs = []
+        for frac in (0.3, 0.5, 0.7):
+            tp = time.time()
+            _section_points(shape, com, axis, u, v, zmin + frac * length, spacing)
+            probe_costs.append(time.time() - tp)
+        sec_cost = max(1e-3, max(probe_costs))
         if sec_cost * n_sections > time_budget_s:
-            n_sections = max(20, int(time_budget_s / sec_cost))
-            _log.warning("Großes Bauteil: Schnittzahl auf %d reduziert "
-                         "(%.2fs/Schnitt)", n_sections, sec_cost)
+            n_sections = int(time_budget_s / sec_cost)
+        # Unter-/Obergrenze: genug Schnitte für ein belastbares Band, aber gedeckelt.
+        n_sections = max(MIN_SECTIONS, min(n_sections, MAX_SECTIONS))
 
-        # Querschnitte über die Länge legen (Randflächen meiden)
+        # Querschnitte über die Länge legen — in STRATIFIZIERTER Reihenfolge, damit
+        # ein Sicherheits-Abbruch (Zeitlimit unter Last) die Achse trotzdem
+        # gleichmäßig abdeckt und den Zahnkranz nicht verfehlt. Nach dem Sammeln
+        # wieder nach Achs-Koordinate sortieren (die Bandbildung braucht z-Ordnung).
         sections: List[Dict[str, Any]] = []
-        for i in range(n_sections):
-            if time.time() - t_start > time_budget_s * 1.5:
-                _log.warning("Zeitbudget überschritten — Vermessung mit %d "
-                             "Schnitten fortgesetzt", len(sections))
+        hard_deadline = time_budget_s * 2.5
+        for i in _stratified_order(n_sections):
+            if time.time() - t_start > hard_deadline:
+                _log.warning("Sicherheits-Stopp der Vermessung nach %d Schnitten",
+                             len(sections))
                 break
             z0 = zmin + length * (i + 0.5) / n_sections
             pts = _section_points(shape, com, axis, u, v, z0, spacing)
@@ -482,6 +526,10 @@ def extract_metrology(shape, n_sections: int = 60, NA: int = 720,
         if not sections:
             return result
 
+        # Nach Achs-Koordinate sortieren (stratifizierte Mess-Reihenfolge aufheben),
+        # damit _longest_band zusammenhängende Achsbereiche korrekt erkennt.
+        sections.sort(key=lambda s: s["z"])
+
         # Außenverzahnung hat Vorrang: Eine Außenverzahnung zeigt den Zahnkranz
         # als äußere Hülle. Nur wenn KEIN belastbares Außenband existiert (glatter
         # Felgenrand), wird auf Innenverzahnung geprüft.
@@ -507,14 +555,19 @@ def extract_metrology(shape, n_sections: int = 60, NA: int = 720,
         tip_r = _median(tip_radii)
         root_r = _median(root_radii)
 
-        # Kegelrad-Erkennung über ZWEI Signale:
+        # Kegel-/Gehrungsrad-Erkennung über ZWEI Signale:
         #  1) Kopfradius ändert sich linear über die Breite (konische Flanke),
         #  2) ein echter Kopfkegel (koaxiale Kegelfläche) liefert γ.
         # Signal 2 fängt auch SPIRAL-Kegelräder, bei denen Signal 1 versagt.
+        # Hinweis: _bevel_pitch_angle liefert den GRÖSSTEN koaxialen Kegel; bei
+        # flachen Achswinkeln Σ<90° (Gehrungsrad, γ<45°) ist das der RÜCKENKEGEL
+        # 90°−γ. Diese Mehrdeutigkeit löst geometry_analyzer für Gehrungsräder über
+        # γ = min(γ_occ, 90°−γ_occ) auf (klassische Kegelräder mit γ>45° bleiben
+        # unberührt — dort ist der größte Kegel der Kopfkegel).
         is_bevel, cone_angle = False, None     # cone_angle = Kopf-/Mantelkegel (für b)
         tip_r_outer = _percentile(tip_radii, 0.95)
         _bevel_cone = _bevel_pitch_angle(shape, com, axis, 2 * tip_r_outer)
-        gamma = _bevel_cone[0] if _bevel_cone else None      # Teilkegelwinkel
+        gamma = _bevel_cone[0] if _bevel_cone else None      # Teilkegelwinkel (≈)
         gamma_dr = _bevel_cone[1] if _bevel_cone else None   # radiale Kopfkegel-Spanne
         if len(tip_radii) >= 4:
             slope = _linfit_slope([s["z"] for s in band_sec], tip_radii)
