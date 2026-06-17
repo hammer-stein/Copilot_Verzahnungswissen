@@ -1,34 +1,67 @@
+# =============================================================================
+# HAUPTKONFIGURATION – KI-Copilot für Wissensbasis
+# =============================================================================
+#
+# DOMÄNE WECHSELN (z.B. auf Obstbäume):
+#   1. domain.name        → sprechender Name der Domäne (erscheint im LLM-Prompt)
+#   2. domain.prompt_path → Systemprompt-Vorlage für den Antwortgenerator
+# =============================================================================
+
 domain:
   name: "Verzahnungen"
-  schema_path: "schemas/gears.yaml"
   prompt_path: "prompts/answer_system_prompt.txt"
+
+# =============================================================================
+# EMBEDDER – Vektorisierungsmodell
+# =============================================================================
+# device: "mps" für Apple Silicon, "cuda" für NVIDIA GPU, "cpu" als Fallback
+# use_sparse: true wird für Hybrid-Retrieval benötigt (lexikalischer Sparse-Kanal).
+#   ACHTUNG: Nach Umstellung von use_sparse müssen Dokumente neu indexiert werden,
+#   da bestehende Qdrant-Punkte sonst keine Sparse-Vektoren tragen.
+# =============================================================================
 
 embedder:
   implementation: "bge_m3"
   model_name: "BAAI/bge-m3"
-  device: "mps" # "cuda" | "cpu" | "mps"
+  device: "cpu"          # ÄNDERUNG: "cpu" | "cuda" | "mps"
   use_sparse: true
   max_length: 8192
-  batch_size: 4
+
+# =============================================================================
+# CHUNKER – Textsegmentierung
+# =============================================================================
+# implementation: "recursive" (schnell, regelbasiert) oder "semantic" (Embedding-gestützt)
+# =============================================================================
 
 chunker:
-  implementation: "semantic"
-  threshold: 0.75
+  implementation: "recursive"   # ÄNDERUNG: "semantic" für semantischen Chunker
+  threshold: 0.5
   min_chunk_size: 100
   max_chunk_size: 512
   overlap_sentences: 1
 
-metadata_extractor:
-  implementation: "llama_ollama"
-  model_name: "llama3.2:3b"
-  ollama_url: "http://localhost:11434"
-  max_retries: 3
-  timeout_s: 30
+# =============================================================================
+# CAD-ADAPTER – Schalter: synthetische Test-JSONs oder echte STEP-Analyse
+# =============================================================================
+# "synthetic_json"     = /cad/analyze liefert synthetische Testdatensätze aus
+#                        synthetic_data_dir (kein cad_processor-Service nötig)
+# "cad_processor_http" = STEP-Dateien werden an den cad_processor (Port 8001)
+#                        geschickt und echt analysiert
+# /cad/random und /cad/examples nutzen immer die synthetischen Datensätze.
+# =============================================================================
 
 cad_adapter:
-  implementation: "cad_processor_http" # "cad_processor_http" (echter Service) | "random_gear_stub" (Demo ohne CAD-Service)
-  url: "http://localhost:8001"         # im Docker-Compose-Netz: http://cad_processor:8001
+  implementation: "synthetic_json"   # ÄNDERUNG: "cad_processor_http" für echte STEP-Analyse
+  url: "http://localhost:8001"
   timeout_s: 120
+  synthetic_data_dir: "test_verzahnung/cad_testdaten"
+
+# =============================================================================
+# VEKTORDATENBANK – Qdrant
+# =============================================================================
+# Qdrant muss als Docker-Container laufen (siehe docker-compose.yml):
+#   docker compose up -d
+# =============================================================================
 
 vector_store:
   implementation: "qdrant"
@@ -37,23 +70,38 @@ vector_store:
   #                          # Im Compose-Netz schaltet QDRANT_HOST automatisch auf den Server-Modus zurück.
   host: "localhost"
   port: 6333
-  collection_name: "knowledge_base"
+  collection_name: "knowledge_base"  # ÄNDERUNG: Domänen-spezifischer Name empfohlen
+
+# =============================================================================
+# RETRIEVER – Hybrid-Suche (Dense + lexikalisch Sparse)
+# =============================================================================
+# min_similarity: Minimale Kosinus-Ähnlichkeit für Treffer (0.0–1.0)
+#   Reduzieren (z.B. 0.40) wenn zu wenige Treffer gefunden werden
+# use_hybrid: kombiniert Dense-Score mit lexikalischem Sparse-Score –
+#   benötigt embedder.use_sparse: true
+# candidate_multiplier: Anzahl Dense-Kandidaten = top_k * multiplier
+#   (nur bei Hybrid relevant, vor dem Sparse-Reranking)
+# =============================================================================
 
 retriever:
-  stage1_strict: true
-  stage1_relax_on_empty: true
-  stage1_min_candidates: 5
-  stage2_top_k: 5
-  stage2_min_similarity: 0.65
-  stage2_use_hybrid: true
+  top_k: 5
+  min_similarity: 0.5   # ÄNDERUNG: 0.40–0.75 je nach Domäne und Treffer-Qualität
+  use_hybrid: true
   hybrid_dense_weight: 0.7
   hybrid_sparse_weight: 0.3
-  reranker_enabled: false
-  reranker_model: "BAAI/bge-reranker-v2-m3"
+  candidate_multiplier: 8
+
+# =============================================================================
+# ANTWORTGENERATOR – LLM-basierte Antwortgenerierung
+# =============================================================================
+# model_name: Für gute Antwortqualität 8b-Modell oder größer empfohlen
+# =============================================================================
 
 answer_generator:
   implementation: "llama_ollama"
-  model_name: "llama3.2:3b"
+  model_name: "llama3.2:3b"     # ÄNDERUNG: verfügbares Modell (ollama list)
+  ollama_url: "http://localhost:11434"
+  timeout_s: 120
   max_tokens: 800
   temperature: 0.2
 

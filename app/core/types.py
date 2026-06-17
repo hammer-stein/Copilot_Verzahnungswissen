@@ -90,6 +90,8 @@ class DocumentInfo:
     source_path: str
     doc_hash: str      # dient als Lösch-ID: DELETE /documents/{doc_hash}
     chunk_count: int
+    file_name: str = ""  # ursprünglicher Dateiname (für die Anzeige in der UI)
+    folder: str = ""     # Ordner zur Organisation der Wissensbasis ("" = kein Ordner)
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +101,9 @@ class DocumentInfo:
 class AnswerSource(TypedDict):
     """Eine Quellenangabe innerhalb einer Antwort. Referenziert via qid ([Q1], [Q2], ...) im Antworttext."""
     qid: str
+    doc_hash: str
     source_path: str
+    title: str
     page_number: int
     similarity: float
     text: str

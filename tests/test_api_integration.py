@@ -22,7 +22,7 @@ _LAST_CALL: dict = {}
 
 
 class _FakeRetriever:
-    def retrieve(self, question, cad_metadata):
+    def retrieve(self, question):
         return []  # Inhalt egal – der Fake-Generator ignoriert die Chunks
 
 
@@ -35,7 +35,9 @@ class _FakeAnswerGenerator:
             "answer_text": f"Antwort im Format '{answer_format}'. [Q1]",
             "sources": [{
                 "qid": "Q1",
+                "doc_hash": "abc123",
                 "source_path": "DIN3990.pdf",
+                "title": "DIN3990.pdf",
                 "page_number": 7,
                 "similarity": 0.83,
                 "text": "Beispiel-Chunktext.",
@@ -50,7 +52,10 @@ class _FakeCadAdapter:
 
 class _FakeStore:
     def list_documents(self):
-        return [DocumentInfo(source_path="DIN3990.pdf", doc_hash="abc123", chunk_count=42)]
+        return [DocumentInfo(source_path="DIN3990.pdf", doc_hash="abc123", chunk_count=42, file_name="DIN3990.pdf")]
+
+    def set_document_title(self, doc_hash, title):
+        self.last_title = (doc_hash, title)
 
 
 class _FakeComponents:
@@ -82,7 +87,7 @@ client = TestClient(create_app())
 def test_root_redirects_to_gui():
     r = client.get("/", follow_redirects=False)
     assert r.status_code in (302, 307)
-    assert r.headers["location"] == "/ui/ui_kits/copilot/"
+    assert r.headers["location"].startswith("/ui/ui_kits/copilot/")
 
 
 def test_gui_index_served():
@@ -104,6 +109,12 @@ def test_documents_endpoint():
     body = r.json()
     assert body[0]["source_path"] == "DIN3990.pdf"
     assert body[0]["chunk_count"] == 42
+
+
+def test_document_title_endpoint():
+    r = client.post("/documents/abc123/title", json={"title": "DIN 3990 Tragfähigkeit.pdf"})
+    assert r.status_code == 200
+    assert r.json()["title"] == "DIN 3990 Tragfähigkeit.pdf"
 
 
 def test_cad_analyze_endpoint():

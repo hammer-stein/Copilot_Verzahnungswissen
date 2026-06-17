@@ -23,7 +23,11 @@ config.yaml
 cad_processor/
 docs/
 tests/
-test_verzahnung/
+test_verzahnung/*
+!test_verzahnung/
+!test_verzahnung/cad_testdaten/
+!test_verzahnung/cad_testdaten/**
+
 # Designer-Quellen/Showcase des Design-Systems (nur die gebündelte Runtime unter frontend/design-system/ wird ausgeliefert)
 design-system-source/
 

@@ -2,7 +2,7 @@
 ollama_client.py – HTTP-Client für die Ollama REST-API.
 
 Kapselt alle HTTP-Aufrufe an den lokalen Ollama-Server (POST /api/generate).
-Wird von OllamaMetadataExtractor (JSON-Ausgabe) und OllamaAnswerGenerator (Fließtext) genutzt.
+Wird von OllamaAnswerGenerator genutzt.
 """
 
 from __future__ import annotations
@@ -33,11 +33,16 @@ class OllamaClient:
         Sendet einen Prompt an Ollama und gibt den Antworttext zurück.
         stream=False bedeutet: Ollama wartet bis zur vollständigen Antwort und schickt sie als einen JSON-Response.
         """
-        payload: dict[str, Any] = {"model": model, "prompt": prompt, "stream": False}
+        # Sampling-Parameter MÜSSEN ins "options"-Objekt – auf Top-Level ignoriert Ollama sie stillschweigend.
+        options: dict[str, Any] = {}
         if temperature is not None:
-            payload["temperature"] = temperature
+            options["temperature"] = temperature
         if max_tokens is not None:
-            payload["num_predict"] = max_tokens  # Ollama nennt es "num_predict", nicht "max_tokens"
+            options["num_predict"] = max_tokens  # Ollama nennt es "num_predict", nicht "max_tokens"
+
+        payload: dict[str, Any] = {"model": model, "prompt": prompt, "stream": False}
+        if options:
+            payload["options"] = options
 
         with httpx.Client(timeout=self.timeout_s) as client:
             r = client.post(f"{self.base_url}/api/generate", json=payload)

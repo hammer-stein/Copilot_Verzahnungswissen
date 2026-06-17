@@ -1,5 +1,5 @@
 /* Right inspector panel: technical drawing, parameter table, metadata JSON. */
-function Inspector({ gear, hasPart = true, onClose }) {
+function Inspector({ gear, raw = null, hasPart = true, onClose }) {
   const { Tabs, ParameterTable, CodeBlock, Badge } = window.VerzahnungsCopilotDesignSystem_c9990b;
   const [tab, setTab] = React.useState('zeichnung');
 
@@ -34,15 +34,13 @@ function Inspector({ gear, hasPart = true, onClose }) {
     { key: 'Fußkreis d_f', value: gear.fusskreis, unit: 'mm' },
     { key: 'Zahnbreite b', value: gear.zahnbreite, unit: 'mm' },
   ];
-  const json = `{
-  "verzahnungstyp": "${gear.verzahnungstyp}",
-  "modul": ${gear.modul.replace(',', '.')},
-  "zaehnezahl": ${gear.zaehnezahl},
-  "eingriffswinkel": ${gear.eingriffswinkel.replace(',', '.')},
-  "werkstoff": "${gear.werkstoff}",
-  "haerte": "${gear.haerte}",
-  "verzahnungsqualitaet": ${gear.qualitaet}
-}`;
+  // Echtes cad_metadata-JSON (GearParameters) anzeigen; Fallback auf die Parameter-Sicht.
+  const json = raw && Object.keys(raw).length
+    ? JSON.stringify(raw, null, 2)
+    : JSON.stringify({
+        verzahnungstyp: gear.verzahnungstyp, modul: gear.modul, zaehnezahl: gear.zaehnezahl,
+        eingriffswinkel: gear.eingriffswinkel, werkstoff: gear.werkstoff, qualitaet: gear.qualitaet,
+      }, null, 2);
 
   return (
     <aside className="vc-inspector">

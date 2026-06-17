@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "source_file": "gear_08.step",
+  "gear_type": "internal",
+  "confidence": 0.95,
+  "basic_geometry": {
+    "outer_diameter_mm": 141.0,
+    "root_diameter_mm": 129.0,
+    "pitch_diameter_mm": 124.0,
+    "face_width_mm": 20.0,
+    "total_width_mm": 20.0,
+    "hub_bore_diameter_mm": 120.0,
+    "volume_mm3": 86095.3,
+    "surface_area_mm2": 40088.3
+  },
+  "tooth_profile": {
+    "num_teeth": 62,
+    "module_mm": 2.0,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "tooth_height_mm": 4.5,
+    "addendum_mm": 2.0,
+    "dedendum_mm": 2.5,
+    "profile_shift_x": 0.0,
+    "root_fillet_radius_mm": 0.76,
+    "tooth_thickness_mm": 3.142
+  },
+  "topology": {
+    "is_internal_gear": true,
+    "symmetry_type": "rotational",
+    "cone_angle_deg": null,
+    "shaft_angle_deg": null,
+    "worm_starts": null,
+    "keyway_present": false,
+    "has_flanges": false
+  },
+  "material_context": {
+    "material": "16MnCr5",
+    "mass_kg": 0.676,
+    "bore_fit": null,
+    "quality_class_din": 7,
+    "norm_reference": [
+      "DIN 867",
+      "DIN 3960",
+      "DIN ISO 1328"
+    ],
+    "tolerance_class": null,
+    "surface_roughness_ra": null
+  },
+  "metadata": {
+    "part_name": "Testzahnrad gear_08",
+    "part_number": "TEST-GEAR_08",
+    "created_by": null
+  },
+  "extraction_quality": {
+    "warnings": [],
+    "extraction_notes": {
+      "synthetic": "Erzeugt von generate_testdata.py, kein echtes STEP-Parsing."
+    },
+    "bbox_mm": {
+      "x": 141.0,
+      "y": 141.0,
+      "z": 20.0
+    }
+  },
+  "hints": {}
+}

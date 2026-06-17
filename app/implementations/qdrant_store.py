@@ -2,8 +2,8 @@
 qdrant_store.py – Vektordatenbank-Adapter für Qdrant.
 
 Implementiert das VectorStore-Protokoll. Speichert Chunks als Qdrant-Punkte mit
-Vektor + Payload (Text, Metadaten, doc_hash) und ermöglicht kombinierte Vektor-
-und Metadaten-Filtersuche. Punkt-IDs sind deterministisch aus (doc_hash, position) gehasht.
+Vektor + Payload (Text, doc_hash, Sparse-Vektor) und führt die Vektorsuche aus.
+Punkt-IDs sind deterministisch aus (doc_hash, position) gehasht.
 """
 
 from __future__ import annotations
@@ -16,12 +16,9 @@ from qdrant_client.http.models import (
     Distance,
     FieldCondition,
     Filter,
-    IsEmptyCondition,
     MatchValue,
-    PayloadField,
     PayloadSchemaType,
     PointStruct,
-    Range,
     VectorParams,
 )
 
@@ -77,19 +74,6 @@ class QdrantStore:
         self.client.create_payload_index(
             collection_name=self.collection_name, field_name="source_path", field_schema=PayloadSchemaType.KEYWORD,
         )
-        for field_name, field_schema in [
-            ("metadata.verzahnungstyp", PayloadSchemaType.KEYWORD),
-            ("metadata.modul_min", PayloadSchemaType.FLOAT),
-            ("metadata.modul_max", PayloadSchemaType.FLOAT),
-        ]:
-            try:
-                self.client.create_payload_index(
-                    collection_name=self.collection_name,
-                    field_name=field_name,
-                    field_schema=field_schema,
-                )
-            except Exception:
-                pass
 
     def upsert(self, chunks: list[EmbeddedChunk]) -> None:
         """
@@ -105,14 +89,19 @@ class QdrantStore:
         points: list[PointStruct] = []
         for ec in chunks:
             c = ec.chunk
+            meta = ec.metadata or {}
             payload: dict[str, Any] = {
                 "text": c.text,
                 "source_path": c.source_path,
                 "page_number": c.page_number,
                 "position": c.position,
                 "doc_hash": c.doc_hash,
-                "metadata": ec.metadata or {},
+                "metadata": meta,
                 "sparse_vector": ec.sparse_vector or {},
+                # Dokument-Ebene: aus der Metadaten-Bag auf Top-Level gehoben, damit
+                # list_documents und set_document_folder sie ohne JSON-Parsing lesen/schreiben können.
+                "file_name": str(meta.get("file_name", "")),
+                "folder": str(meta.get("folder", "")),
             }
             # Stabiler Integer-ID über Prozesse hinweg.
             digest = hashlib.sha256(f"{c.doc_hash}:{c.position}".encode("utf-8")).digest()
@@ -125,7 +114,6 @@ class QdrantStore:
         self,
         query_vector: list[float],
         *,
-        filter: dict,
         top_k: int,
         threshold: float,
         query_sparse_vector: Optional[dict[str, float]] = None,
@@ -134,19 +122,15 @@ class QdrantStore:
         hybrid_sparse_weight: float = 0.3,
     ) -> list[SearchResult]:
         """
-        Führt eine kombinierte Vektor- und Metadaten-Filtersuche aus.
-        query_points() ist die aktuelle API (Qdrant >= 1.10, ersetzt das veraltete search()).
+        Führt die Vektorsuche aus. query_points() ist die aktuelle API
+        (Qdrant >= 1.10, ersetzt das veraltete search()).
         Hybrid-Search nutzt Qdrant für dichte Kandidaten und rerankt diese lokal mit Sparse-Scores.
         """
         if not self._collection_exists():
             return []  # leere Wissensbasis (noch nichts indexiert)
-
-        qfilter = _dict_filter_to_qdrant(filter)
-
         response = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,
-            query_filter=qfilter,      # None = kein Filter
             limit=top_k,
             score_threshold=threshold,
             with_payload=True,
@@ -167,7 +151,7 @@ class QdrantStore:
             out.append(
                 SearchResult(
                     chunk=_payload_to_chunk(p),
-                    metadata=(p.get("metadata") or {}),
+                    metadata=_payload_to_metadata(p),
                     dense_score=dense_score,
                     sparse_score=sparse_score,
                     score=final_score,
@@ -180,6 +164,37 @@ class QdrantStore:
         self.client.delete(
             collection_name=self.collection_name,
             points_selector=Filter(
+                must=[FieldCondition(key="doc_hash", match=MatchValue(value=doc_hash))]
+            ),
+        )
+
+    def set_document_folder(self, doc_hash: str, folder: str) -> None:
+        """
+        Ordnet ein Dokument einem Ordner zu, indem das Payload-Feld "folder" für ALLE
+        Chunks dieses doc_hash gesetzt wird. set_payload aktualisiert nur die genannten
+        Felder; Text, Vektor und übrige Payload bleiben unangetastet.
+        """
+        if not self._collection_exists():
+            return
+        self.client.set_payload(
+            collection_name=self.collection_name,
+            payload={"folder": str(folder or "")},
+            points=Filter(
+                must=[FieldCondition(key="doc_hash", match=MatchValue(value=doc_hash))]
+            ),
+        )
+
+    def set_document_title(self, doc_hash: str, title: str) -> None:
+        """
+        Speichert den Anzeigenamen eines Dokuments an allen Chunks. Die Quellenausgabe
+        nutzt später genau dieses Payload-Feld statt des anonymisierten Upload-Pfads.
+        """
+        if not self._collection_exists():
+            return
+        self.client.set_payload(
+            collection_name=self.collection_name,
+            payload={"file_name": str(title or "")},
+            points=Filter(
                 must=[FieldCondition(key="doc_hash", match=MatchValue(value=doc_hash))]
             ),
         )
@@ -201,25 +216,33 @@ class QdrantStore:
                 collection_name=self.collection_name,
                 limit=256,
                 offset=offset,
-                with_payload=["source_path", "doc_hash"],
+                with_payload=["source_path", "doc_hash", "file_name", "folder"],
                 with_vectors=False,
             )
             for pt in points:
                 payload = pt.payload or {}
                 dh = str(payload.get("doc_hash", ""))
                 sp = str(payload.get("source_path", ""))
+                fn = str(payload.get("file_name", "") or "")
+                fld = str(payload.get("folder", "") or "")
                 if not dh:
                     continue
                 if dh not in docs:
-                    docs[dh] = DocumentInfo(source_path=sp, doc_hash=dh, chunk_count=1)
+                    docs[dh] = DocumentInfo(source_path=sp, doc_hash=dh, chunk_count=1, file_name=fn, folder=fld)
                 else:
                     prev = docs[dh]
-                    docs[dh] = DocumentInfo(source_path=prev.source_path or sp, doc_hash=dh, chunk_count=prev.chunk_count + 1)
+                    docs[dh] = DocumentInfo(
+                        source_path=prev.source_path or sp,
+                        doc_hash=dh,
+                        chunk_count=prev.chunk_count + 1,
+                        file_name=prev.file_name or fn,
+                        folder=prev.folder or fld,
+                    )
 
             if offset is None:  # keine weiteren Seiten
                 break
 
-        return sorted(docs.values(), key=lambda d: d.source_path)
+        return sorted(docs.values(), key=lambda d: (d.folder.casefold(), (d.file_name or d.source_path).casefold()))
 
 
 def _payload_to_chunk(payload: dict[str, Any]):
@@ -234,38 +257,18 @@ def _payload_to_chunk(payload: dict[str, Any]):
     )
 
 
-def _dict_filter_to_qdrant(filter_dict: dict) -> Optional[Filter]:
+def _payload_to_metadata(payload: dict[str, Any]) -> dict[str, Any]:
     """
-    Wandelt das interne Filter-Dict in Qdrant-Filter-Objekte um.
-    or_empty=True kombiniert jede Bedingung mit IsEmpty (OR) – Chunks ohne das Feld werden nicht ausgeschlossen.
+    Kombiniert die freie Chunk-Metadaten-Bag mit Dokument-Metadaten auf Top-Level.
+    Ältere Punkte enthalten file_name teilweise nur auf Top-Level; der AnswerGenerator
+    braucht diese Information für sprechende Quellen statt technischer Upload-Pfade.
     """
-    if not filter_dict:
-        return None
-
-    must_conditions = []
-    for cond in filter_dict.get("must", []):
-        key = cond["key"]
-        or_empty = bool(cond.get("or_empty", False))
-
-        if "match" in cond:
-            c = FieldCondition(key=key, match=MatchValue(value=cond["match"]))
-        elif "contains" in cond:
-            c = FieldCondition(key=key, match=MatchValue(value=cond["contains"]))
-        elif "range" in cond:
-            r = cond["range"]
-            c = FieldCondition(key=key, range=Range(gte=r.get("gte"), lte=r.get("lte")))
-        else:
-            continue  # unbekannter Typ
-
-        if or_empty:
-            # OR-Verknüpfung: Bedingung ODER Feld fehlt (Großzügigkeitsprinzip)
-            must_conditions.append(
-                Filter(should=[c, IsEmptyCondition(is_empty=PayloadField(key=key))])
-            )
-        else:
-            must_conditions.append(c)
-
-    return Filter(must=must_conditions or None)
+    metadata = dict(payload.get("metadata") or {})
+    for key in ("file_name", "folder", "doc_hash", "source_path"):
+        value = payload.get(key)
+        if value not in (None, "") and not metadata.get(key):
+            metadata[key] = value
+    return metadata
 
 
 def _sparse_dot(a: dict[str, float], b: dict[str, Any]) -> float:
