@@ -1,11 +1,11 @@
 # Testergebnisse — CAD-Geometrie-Pipeline
 
-**Datum:** 2026-06-16  
+**Datum:** 2026-06-18  
 **Test:** `python cad_processor/tests/accuracy_test.py`  
 **Schwellen:** OK ≤ 2 % · Warnung ≤ 5 % · Fehler > 5 % Abweichung  
 **Datenquelle:** reale McMaster-Carr-STEP-Dateien, Soll aus Hersteller-Datenblättern  
 
-## Gesamtergebnis: 276/286 Parameter korrekt (97%)  |  3 Warnungen  |  7 Fehler
+## Gesamtergebnis: 289/299 Parameter korrekt (97%)  |  7 Warnungen  |  3 Fehler
 
 ## Übersicht je Datei
 
@@ -17,12 +17,13 @@
 | `2664N486_Metal Gear - 20 Degree Pressure Angle.STEP` | spur | 13/13 OK  (0 ⚠  0 ✗  0 ?) |
 | `2515N11_Metal Bevel Gear.STEP` | bevel | 12/12 OK  (0 ⚠  0 ✗  0 ?) |
 | `2515N15_Metal Bevel Gear.STEP` | bevel | 12/12 OK  (0 ⚠  0 ✗  0 ?) |
+| `2515N328_Metal Bevel Gear.STEP` | bevel | 11/13 OK  (2 ⚠  0 ✗  0 ?) |
 | `2515N336_Metal Bevel Gear.STEP` | bevel | 10/12 OK  (2 ⚠  0 ✗  0 ?) |
 | `2515N355_Metal Bevel Gear.STEP` | bevel | 12/12 OK  (0 ⚠  0 ✗  0 ?) |
 | `3856N121_Plastic Bevel Gear.STEP` | bevel | 12/12 OK  (0 ⚠  0 ✗  0 ?) |
 | `6010N13_High-Power Metal Bevel Gear.STEP` | bevel | 10/10 OK  (0 ⚠  0 ✗  0 ?) |
-| `2600N14_Metal Miter Gear.STEP` | miter | 12/14 OK  (0 ⚠  0 ✗  2 ?) |
-| `2600N15_Metal Miter Gear.STEP` | miter | 12/14 OK  (0 ⚠  0 ✗  2 ?) |
+| `2600N14_Metal Miter Gear.STEP` | miter | 13/14 OK  (1 ⚠  0 ✗  0 ?) |
+| `2600N15_Metal Miter Gear.STEP` | miter | 13/14 OK  (1 ⚠  0 ✗  0 ?) |
 | `2600N5_Metal Miter Gear.STEP` | miter | 14/14 OK  (0 ⚠  0 ✗  0 ?) |
 | `2810N2_Plastic Miter Gear.STEP` | miter | 12/12 OK  (0 ⚠  0 ✗  0 ?) |
 | `3560N14_Metal Miter Gear.STEP` | miter | 14/14 OK  (0 ⚠  0 ✗  0 ?) |
@@ -119,7 +120,7 @@
 | ✅ | `face_width_mm` | 6.003  (erwartet: 6.000,  Δ=0.0%) |
 | ✅ | `helix_angle_deg` | 0.000  (erwartet: 0) |
 | ✅ | `pressure_angle_deg` | 20.000  (erwartet: 20.000,  Δ=0.0%) |
-| ✅ | `bore_diameter_mm` | 5.955  (erwartet: 6.000,  Δ=0.7%) |
+| ✅ | `bore_diameter_mm` | 5.956  (erwartet: 6.000,  Δ=0.7%) |
 | ✅ | `overall_width_mm` | 14.036  (erwartet: 14.000,  Δ=0.3%) |
 | ✅ | `hub_diameter_mm` | 25.000  (erwartet: 25.000,  Δ=0.0%) |
 
@@ -166,6 +167,27 @@
 | ✅ | `hub_diameter_mm` | 38.100  (erwartet: 38.100,  Δ=0.0%) |
 
 **Ergebnis: 12/12 OK  (0 ⚠  0 ✗  0 ?)**
+
+#### `2515N328_Metal Bevel Gear.STEP`  
+<sub>2515N328 · Black-Oxide 1045 Carbon Steel</sub>
+
+| Status | Parameter | Messung / Vergleich |
+|:--:|---|---|
+| ✅ | `gear_type` | bevel |
+| ✅ | `is_internal_gear` | False |
+| ✅ | `num_teeth` | 45 |
+| ✅ | `module_mm` | 1.500  (erwartet: 1.500,  Δ=0.0%) |
+| ✅ | `outer_diameter_mm` | 67.896  (erwartet: 68.100,  Δ=0.3%) |
+| ✅ | `pitch_diameter_mm` | 67.500  (erwartet: 67.500,  Δ=0.0%) |
+| ✅ | `face_width_mm` | 9.937  (erwartet: 10.000,  Δ=0.6%) |
+| ✅ | `helix_angle_deg` | 0.000  (erwartet: 0) |
+| ✅ | `pressure_angle_deg` | 20.000  (erwartet: 20.000,  Δ=0.0%) |
+| ✅ | `bore_diameter_mm` | 10.000  (erwartet: 10.000,  Δ=0.0%) |
+| ⚠️ | `overall_width_mm` | 20.850  (erwartet: 20.000,  Δ=4.3%) |
+| ✅ | `hub_diameter_mm` | 36.000  (erwartet: 36.000,  Δ=0.0%) |
+| ⚠️ | `hub_width_mm` | 10.500  (erwartet: 11.000,  Δ=4.5%) |
+
+**Ergebnis: 11/13 OK  (2 ⚠  0 ✗  0 ?)**
 
 #### `2515N336_Metal Bevel Gear.STEP`  
 <sub>2515N336 · Black-Oxide 1045 Carbon Steel</sub>
@@ -260,14 +282,14 @@
 | ✅ | `pitch_diameter_mm` | 50.000  (erwartet: 50.000,  Δ=0.0%) |
 | ✅ | `overall_width_mm` | 24.354  (erwartet: 24.300,  Δ=0.2%) |
 | ✅ | `bore_diameter_mm` | 14.804  (erwartet: 15.000,  Δ=1.3%) |
-| ❔ | `hub_diameter_mm` | None  (erwartet: 40.0) |
-| ❔ | `hub_width_mm` | None  (erwartet: 10.0) |
+| ✅ | `hub_diameter_mm` | 40.000  (erwartet: 40.000,  Δ=0.0%) |
+| ⚠️ | `hub_width_mm` | 9.745  (erwartet: 10.000,  Δ=2.5%) |
 | ✅ | `shaft_angle_deg` | 90.000  (erwartet: 90.000,  Δ=0.0%) |
 | ✅ | `cone_angle_deg` | 45.000  (erwartet: 45.000,  Δ=0.0%) |
 | ✅ | `helix_angle_deg` | 0.000  (erwartet: 0) |
 | ✅ | `pressure_angle_deg` | 20.000  (erwartet: 20.000,  Δ=0.0%) |
 
-**Ergebnis: 12/14 OK  (0 ⚠  0 ✗  2 ?)**
+**Ergebnis: 13/14 OK  (1 ⚠  0 ✗  0 ?)**
 
 #### `2600N15_Metal Miter Gear.STEP`  
 <sub>1045 Carbon Steel</sub>
@@ -282,14 +304,14 @@
 | ✅ | `pitch_diameter_mm` | 60.000  (erwartet: 60.000,  Δ=0.0%) |
 | ✅ | `overall_width_mm` | 29.364  (erwartet: 29.400,  Δ=0.1%) |
 | ✅ | `bore_diameter_mm` | 14.852  (erwartet: 15.000,  Δ=1.0%) |
-| ❔ | `hub_diameter_mm` | None  (erwartet: 45.0) |
-| ❔ | `hub_width_mm` | None  (erwartet: 12.5) |
+| ✅ | `hub_diameter_mm` | 45.000  (erwartet: 45.000,  Δ=0.0%) |
+| ⚠️ | `hub_width_mm` | 12.165  (erwartet: 12.500,  Δ=2.7%) |
 | ✅ | `shaft_angle_deg` | 90.000  (erwartet: 90.000,  Δ=0.0%) |
 | ✅ | `cone_angle_deg` | 45.000  (erwartet: 45.000,  Δ=0.0%) |
 | ✅ | `helix_angle_deg` | 0.000  (erwartet: 0) |
 | ✅ | `pressure_angle_deg` | 20.000  (erwartet: 20.000,  Δ=0.0%) |
 
-**Ergebnis: 12/14 OK  (0 ⚠  0 ✗  2 ?)**
+**Ergebnis: 13/14 OK  (1 ⚠  0 ✗  0 ?)**
 
 #### `2600N5_Metal Miter Gear.STEP`  
 <sub>1045 Carbon Steel</sub>

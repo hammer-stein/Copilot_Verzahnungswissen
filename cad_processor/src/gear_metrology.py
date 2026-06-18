@@ -658,7 +658,7 @@ def extract_metrology(shape, n_sections: int = 48, NA: int = 720,
         bore_d = _detect_bore(sections, i0, i1, root_r)
 
         # Nabe (Naben-Ø + -Breite) — koaxialer Absatz zwischen Bohrung und Kranz
-        hub_dia, hub_w = _detect_hub(shape, com, axis, d_a, d_f, bore_d)
+        hub_dia, hub_w = _detect_hub(shape, com, axis, d_a, d_f, bore_d, is_bevel)
 
         # Ratschenrad: stark ASYMMETRISCHE (Sägezahn-)Kontur — sanfte Rampe,
         # steile Flanke. Nur bei Außenverzahnung ohne Kegel prüfen.
@@ -884,7 +884,8 @@ def _face_width_from_flanks(shape, com, axis, root_r: float, tip_r: float,
 
 
 def _detect_hub(shape, com, axis, d_a: float, d_f: float,
-                bore_d: Optional[float]) -> Tuple[Optional[float], Optional[float]]:
+                bore_d: Optional[float], is_bevel: bool = False
+                ) -> Tuple[Optional[float], Optional[float]]:
     """
     Nabe (Hub) = koaxiale Zylinderfläche zwischen Bohrung und Zahnkranz, die als
     Absatz/Buchse axial heraussteht. Sucht unter den koaxialen Zylindern den
@@ -893,6 +894,12 @@ def _detect_hub(shape, com, axis, d_a: float, d_f: float,
       - NICHT nahe dem Fußkreis d_f (das wäre der Zahnfuß-Zylinder),
       - nennenswerte axiale Ausdehnung.
     Gibt (Nabendurchmesser, Nabenbreite) zurück, sonst (None, None).
+
+    Hinweis is_bevel: Kegel-/Gehrungsräder haben KEINEN Fußkreis-Zylinder (der Zahnfuß
+    ist ein Kegel), und ihr achsnormal gemessener d_f ist unzuverlässig. Der „nahe-d_f"-
+    Ausschluss (gegen den Zahnfuß-Zylinder bei Stirnrädern) würde dort die echte Nabe
+    fälschlich verwerfen, sobald der wackelige d_f zufällig nahe dem Naben-Ø liegt
+    (z. B. 2600N14: Nabe Ø40 neben d_f≈39). Daher bei Kegel-/Gehrungsrädern abgeschaltet.
     """
     lo = (bore_d * 1.3) if bore_d else 0.0
     hi = 0.92 * d_a
@@ -928,7 +935,7 @@ def _detect_hub(shape, com, axis, d_a: float, d_f: float,
 
     cands = [(dia, ext) for dia, ext in cyl.items()
              if lo < dia < hi and ext >= 2.0
-             and (d_f <= 0 or abs(dia - d_f) > 0.06 * d_f)]
+             and (is_bevel or d_f <= 0 or abs(dia - d_f) > 0.06 * d_f)]
     if not cands:
         return None, None
     # prominenteste Nabe = größter Durchmesser

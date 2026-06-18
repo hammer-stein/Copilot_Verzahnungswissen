@@ -125,6 +125,24 @@
     "hub_diameter_mm": 70.0
   },
 
+  "2515N328_Metal Bevel Gear.STEP": {
+    "_notes": "McMaster 2515N328. Gerade Kegelrad, 3:1 → Teilkegelwinkel γ=71.57°. Datenblatt: 1045 Carbon Steel, ungehärtet, Japan, Achswinkel 90°, Naben-Bund Ø36/11. pitch_diameter als d=m·z=67.5 geführt (Datenblatt rundet auf 68).",
+    "_extra_datasheet": { "system_of_measurement": "metric", "speed_ratio": "3:1", "pitch_cone_angle_deg": 71.57, "mounting_distance_mm": 28.0, "gear_pitch_diameter_mm": 68.0, "material": "Black-Oxide 1045 Carbon Steel", "tooth_heat_treatment": "not hardened", "country_of_origin": "Japan", "part_number": "2515N328" },
+    "gear_type": "bevel",
+    "is_internal_gear": false,
+    "num_teeth": 45,
+    "module_mm": 1.5,
+    "outer_diameter_mm": 68.1,
+    "pitch_diameter_mm": 67.5,
+    "face_width_mm": 10.0,
+    "helix_angle_deg": 0.0,
+    "pressure_angle_deg": 20.0,
+    "bore_diameter_mm": 10.0,
+    "overall_width_mm": 20.0,
+    "hub_diameter_mm": 36.0,
+    "hub_width_mm": 11.0
+  },
+
   "6010N13_High-Power Metal Bevel Gear.STEP": {
     "_notes": "McMaster 6010N13. SPIRAL-Kegelrad (High Load), 2:1, γ=63.43°. Spiralwinkel nicht im Datenblatt → helix weggelassen. Bohrung als Bereich (10-25mm) → bore weggelassen.",
     "_extra_datasheet": { "tooth": "spiral", "speed_ratio": "2:1", "mating_teeth": 20, "pitch_cone_angle_deg": 63.43, "hub_width_mm": 15.0, "mounting_distance_mm": 35.0, "material": "Black-Oxide 1045 Carbon Steel", "part_number": "6010N13" },
