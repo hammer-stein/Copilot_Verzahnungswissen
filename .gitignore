@@ -16,6 +16,15 @@ config.yaml
 logs/
 storage/
 
+# Caches & generierte Artefakte
+# (Inline-Kommentare sind in .gitignore NICHT erlaubt – daher hier auf eigenen Zeilen)
+# .cache/        lokaler Hugging-Face-Modellcache (BAAI/bge-m3 etc.)
+# cad_processor/_acc_*   generierte Accuracy-Reports/-Logs der CAD-Pipeline (_acc_out.txt, _acc_err.log)
+# *.pre-merge.bak  versehentliche Merge-Backups
+.cache/
+cad_processor/_acc_*
+*.pre-merge.bak
+
 # LaTeX
 *.aux
 *.log

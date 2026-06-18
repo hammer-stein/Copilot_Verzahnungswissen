@@ -5,7 +5,7 @@ Modulares RAG-System für Verzahnungswissen mit optionaler CAD-Anbindung.
 ```text
 PDFs                 → RAG-Wissensbasis in Qdrant
 STEP/STP-Datei       → cad_processor → GearParameters JSON
-Nutzerfrage + CAD    → Retrieval aus PDFs → Antwort-LLM mit Quellen und CAD-Kontext
+Nutzerfrage + CAD    → Retrieval aus PDFs → Solver/Reviewer-LLM → Antwort + Lösungsweg + Quellen
 ```
 
 ## Systemüberblick
@@ -25,15 +25,23 @@ Ollama läuft separat auf dem Host-Rechner und stellt das Antwortmodell bereit.
 ```text
 1. Nutzerfrage wird mit BGE-M3 embedded.
 2. HybridRetriever sucht passende PDF-Chunks in Qdrant.
-3. AnswerGenerator bekommt:
+3. Der Antwortgenerator bekommt:
    - ursprüngliche Nutzerfrage
    - gefundene Chunks
    - vollständiges CAD-JSON
    - gewünschtes Ausgabeformat
-4. Ollama erzeugt die Antwort mit Quellenmarkierungen [Q1], [Q2], ...
+4. Antwortgenerierung je nach answer_generator.implementation (config.yaml):
+   - "multi_agent" (Standard): Orchestrator (Code) → Solver (LLM) → Reviewer (LLM).
+     Der Solver entwirft eine quellenbelegte Antwort, der Reviewer prüft sie auf
+     Quellendeckung und Plausibilität (optional eine Revision). Der nachvollziehbare
+     Lösungsweg wird als agent_trace + review zurückgegeben.
+   - "llama_ollama": klassischer Single-Pass (genau ein LLM-Aufruf, kein agent_trace).
+5. Ollama erzeugt die Antwort mit Quellenmarkierungen [Q1], [Q2], ... ([CAD] für Bauteildaten).
 ```
 
-Wichtig: Das CAD-JSON wird aktuell **nicht** in das Retrieval eingebettet und nicht als Filter verwendet. Es wird erst in der Antwortstufe als Bauteilkontext genutzt.
+Wichtig:
+- Das CAD-JSON wird **nicht** in das Retrieval eingebettet und nicht als Filter verwendet. Es wird erst in der Antwortstufe als Bauteilkontext genutzt.
+- Der Multi-Agenten-Fluss fällt bei jedem Fehler (LLM-Fehler, ungültiges JSON) automatisch auf den bewährten Single-Pass zurück – die Antwortqualität ist nie schlechter als zuvor.
 
 ---
 
@@ -269,6 +277,12 @@ Beispiel für `/ask`:
 }
 ```
 
+Antwort: `{ "cad_metadata": {...}, "answers": [ { "question", "answer_text", "sources": [...] } ] }`.
+Im Modus `multi_agent` trägt jede Antwort zusätzlich die optionalen Felder `agent_trace`
+(die geprüften Einzelschritte Orchestrator/Solver/Reviewer) und `review` (Gesamturteil) –
+das Web-GUI zeigt sie als aufklappbaren Block „Lösungsweg & Prüfung". Beide Felder sind
+optional, sodass der Single-Pass-Modus und ältere Clients unverändert funktionieren.
+
 ### CAD-Prozessor (`localhost:8001`)
 
 | Methode | Pfad | Beschreibung |
@@ -297,8 +311,8 @@ Copilot_Verzahnungswissen/
 ├── app/                        RAG-System
 │   ├── api/main.py             FastAPI-App auf Port 8000
 │   ├── core/                   Config, Factory, Interfaces, Types
-│   ├── implementations/        Embedder, Chunker, Retriever, CAD-Adapter, AnswerGenerator
-│   └── pipeline/               PDF-Indexierung
+│   ├── implementations/        Embedder, Chunker, Retriever, CAD-Adapter, AnswerGenerator (Single-Pass + Multi-Agent)
+│   └── pipeline/               PDF-Indexierung + agents/ (Solver-/Reviewer-Agenten)
 ├── cad_processor/              CAD-Prozessor
 │   ├── src/main.py             FastAPI-App auf Port 8001
 │   ├── src/step_parser.py      STEP-Datei einlesen

@@ -397,6 +397,42 @@ body {
 }
 .vc-sources__list { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 14px 14px; }
 
+/* Prüfbarer Lösungsweg (Multi-Agenten-Flow) – teilt sich die Card-Hülle mit .vc-sources */
+.vc-reasoning__list { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; }
+.vc-reasoning__step {
+  border-left: 2px solid var(--border-subtle);
+  padding: 2px 0 2px 12px;
+}
+.vc-reasoning__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vc-reasoning__head svg { color: var(--text-muted); flex: none; }
+.vc-reasoning__agent {
+  font-family: var(--font-rounded); font-weight: 700; font-size: 11px; letter-spacing: 0.02em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.vc-reasoning__title { font-size: 14px; font-weight: 560; color: var(--text-body); }
+.vc-reasoning__content {
+  margin-top: 4px; font-size: 14px; line-height: 1.5; color: var(--text-body);
+  white-space: pre-line;  /* erhält Zeilenumbrüche in Befund/Beanstandungsliste */
+}
+.vc-reasoning__badge {
+  margin-left: auto; font-family: var(--font-rounded); font-weight: 700; font-size: 11px;
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  color: var(--accent-text); background: var(--accent-soft);
+}
+.vc-reasoning__badge--warnung,
+.vc-reasoning__badge--fallback { color: #9a5b00; background: rgba(214, 158, 46, 0.16); }
+.vc-reasoning__badge--korrigiert { color: #9a5b00; background: rgba(214, 158, 46, 0.16); }
+.vc-reasoning__badge--freigegeben { color: #1a7f5a; background: rgba(0, 135, 108, 0.14); }
+.vc-reasoning__verdict {
+  display: flex; align-items: flex-start; gap: 8px; margin-top: 2px; padding: 10px 12px;
+  border-radius: 12px; font-size: 14px; line-height: 1.5; color: var(--text-body);
+  background: var(--surface-hover);
+}
+.vc-reasoning__verdict svg { flex: none; margin-top: 2px; }
+.vc-reasoning__verdict--freigegeben { background: rgba(0, 135, 108, 0.10); }
+.vc-reasoning__verdict--korrigiert,
+.vc-reasoning__verdict--unsicher { background: rgba(214, 158, 46, 0.12); }
+
 .vc-generating {
   display: inline-flex; align-items: center; gap: 10px; color: var(--text-muted);
   font-size: 15px; padding: 9px 16px; background: var(--surface-hover);

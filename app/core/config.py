@@ -84,13 +84,27 @@ class RetrieverConfig(BaseModel):
 
 
 class AnswerGeneratorConfig(BaseModel):
-    """Konfiguration des LLM-Aufrufs für die Antwortgenerierung."""
-    implementation: Literal["llama_ollama"]
+    """
+    Konfiguration der Antwortgenerierung.
+
+    implementation schaltet zwischen zwei Strategien (beide nutzen denselben Ollama-Server):
+    "llama_ollama" = klassischer Single-Pass (ein LLM-Call).
+    "multi_agent"  = leichtgewichtiger Fluss Orchestrator → Solver → Reviewer mit prüfbarem
+                     Lösungsweg (agent_trace). Fällt bei Fehlern automatisch auf den Single-Pass zurück.
+    """
+    implementation: Literal["llama_ollama", "multi_agent"]
     model_name: str
     ollama_url: str = "http://localhost:11434"
     timeout_s: int = 120
     max_tokens: int = 800
     temperature: float = 0.2  # niedrig = faktenorientiert, deterministisch
+
+    # --- nur für implementation == "multi_agent" relevant (Defaults halten bestehende config.yaml gültig) ---
+    solver_prompt_path: str = "prompts/solver_prompt.txt"      # Prompt-Template des Lösungs-Agenten
+    reviewer_prompt_path: str = "prompts/reviewer_prompt.txt"  # Prompt-Template des Review-Agenten
+    enable_review: bool = True        # Review-Schritt aktiv (False = nur Solver, 1 LLM-Call)
+    max_revisions: int = Field(default=1, ge=0)  # max. Solver-Revisionen, wenn der Reviewer ohne Korrektur beanstandet
+    review_temperature: float = 0.0   # Reviewer streng/deterministisch
 
 
 class FrontendConfig(BaseModel):

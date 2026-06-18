@@ -95,15 +95,30 @@ retriever:
 # ANTWORTGENERATOR – LLM-basierte Antwortgenerierung
 # =============================================================================
 # model_name: Für gute Antwortqualität 8b-Modell oder größer empfohlen
+#
+# implementation:
+#   "multi_agent"  = leichtgewichtiger Fluss Orchestrator → Solver → Reviewer (Standard).
+#                    Der Solver entwirft eine Antwort, der Reviewer prüft sie auf
+#                    Quellendeckung/Plausibilität; der nachvollziehbare Lösungsweg wird als
+#                    agent_trace zurückgegeben und im Frontend angezeigt (Prüfbarkeit).
+#                    Pro Frage 2 (–3) LLM-Calls → höhere Latenz; ggf. timeout_s erhöhen.
+#                    Bei jedem Fehler automatischer Fallback auf den Single-Pass.
+#   "llama_ollama" = klassischer Single-Pass (genau ein LLM-Call, kein agent_trace).
 # =============================================================================
 
 answer_generator:
-  implementation: "llama_ollama"
+  implementation: "multi_agent"   # ÄNDERUNG: "llama_ollama" für klassischen Single-Pass
   model_name: "llama3.2:3b"     # ÄNDERUNG: verfügbares Modell (ollama list)
   ollama_url: "http://localhost:11434"
   timeout_s: 120
   max_tokens: 800
   temperature: 0.2
+  # --- nur für implementation: "multi_agent" ---
+  solver_prompt_path: "prompts/solver_prompt.txt"
+  reviewer_prompt_path: "prompts/reviewer_prompt.txt"
+  enable_review: true       # false = nur Solver (1 LLM-Call, kein Review)
+  max_revisions: 1          # max. Solver-Revisionen, wenn der Reviewer ohne Korrektur beanstandet (0 = aus)
+  review_temperature: 0.0   # Reviewer streng/deterministisch
 
 frontend:
   default_question_fields: 3

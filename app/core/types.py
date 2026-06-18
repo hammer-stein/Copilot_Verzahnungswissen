@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Optional
 
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +109,32 @@ class AnswerSource(TypedDict):
     text: str
 
 
+class AgentStep(TypedDict):
+    """
+    Ein einzelner, für den Nutzer nachvollziehbarer Schritt des Multi-Agenten-Flows
+    (Orchestrator → Solver → Reviewer). Wird im Frontend als „Lösungsweg & Prüfung"
+    aufklappbar angezeigt und erfüllt damit die geforderte Prüfbarkeit der Antwort.
+    Beim klassischen Single-Pass-Generator bleibt das Feld leer/abwesend.
+    """
+    agent: str                  # "orchestrator" | "solver" | "reviewer"
+    title: str                  # z.B. "Lösungsentwurf", "Plausibilitätsprüfung"
+    content: str                # Klartext-Begründung / geprüfter Einzelschritt
+    status: NotRequired[str]    # "ok" | "warnung" | "korrigiert" | "freigegeben" | "fallback"
+
+
+class ReviewSummary(TypedDict):
+    """Gesamturteil des Review-Agenten über den vorgeschlagenen Lösungsentwurf."""
+    status: str                       # "freigegeben" | "korrigiert" | "unsicher"
+    summary: str                      # kurzer Befund des Reviewers
+    issues: NotRequired[list[str]]    # konkrete Beanstandungen (falls vorhanden)
+
+
 class Answer(TypedDict):
     """Vollständige Antwort auf eine Frage. Erzeugt vom AnswerGenerator, direkt als JSON serialisiert."""
     question: str
     answer_text: str   # enthält Inline-Quellenverweise [Q1], [Q2], ...
     sources: list[AnswerSource]
+    # Optionale Multi-Agenten-Felder (NotRequired) – abwärtskompatibel: der Single-Pass-Generator
+    # und ältere Logs/Tests ohne diese Schlüssel bleiben gültig.
+    agent_trace: NotRequired[list[AgentStep]]   # die nachvollziehbaren „Gedankengänge"
+    review: NotRequired[ReviewSummary]          # Gesamturteil des Reviewers

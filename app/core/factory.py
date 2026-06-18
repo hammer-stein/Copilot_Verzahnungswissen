@@ -146,15 +146,51 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
     )
 
     # 7. Antwortgenerator – HTTP-Verbindung zu Ollama
-    if config.answer_generator.implementation == "llama_ollama":
-        answer_generator: AnswerGenerator = OllamaAnswerGenerator(
-            model_name=config.answer_generator.model_name,
-            base_url=config.answer_generator.ollama_url,
-            timeout_s=config.answer_generator.timeout_s,
-            prompt_path=(base_dir / config.domain.prompt_path),
+    ag = config.answer_generator
+    # Single-Pass-Generator IMMER bauen: er ist entweder die Antwortstrategie selbst oder dient
+    # dem Multi-Agenten-Generator als robuster Fallback (garantierte Mindest-Antwortqualität).
+    single_pass = OllamaAnswerGenerator(
+        model_name=ag.model_name,
+        base_url=ag.ollama_url,
+        timeout_s=ag.timeout_s,
+        prompt_path=(base_dir / config.domain.prompt_path),
+        domain_name=config.domain.name,
+        max_tokens=ag.max_tokens,
+        temperature=ag.temperature,
+    )
+
+    if ag.implementation == "llama_ollama":
+        answer_generator: AnswerGenerator = single_pass
+    elif ag.implementation == "multi_agent":
+        # Lazy-Importe analog zu oben: nur laden, wenn der Multi-Agenten-Modus aktiv ist.
+        from app.implementations.answer_generator_multiagent import MultiAgentAnswerGenerator
+        from app.implementations.ollama_client import OllamaClient
+        from app.pipeline.agents.reviewer import ReviewerAgent
+        from app.pipeline.agents.solver import SolverAgent
+
+        client = OllamaClient(base_url=ag.ollama_url, timeout_s=ag.timeout_s)
+        solver = SolverAgent(
+            client=client,
+            model_name=ag.model_name,
+            prompt_path=(base_dir / ag.solver_prompt_path),
             domain_name=config.domain.name,
-            max_tokens=config.answer_generator.max_tokens,
-            temperature=config.answer_generator.temperature,
+            max_tokens=ag.max_tokens,
+            temperature=ag.temperature,
+        )
+        reviewer = ReviewerAgent(
+            client=client,
+            model_name=ag.model_name,
+            prompt_path=(base_dir / ag.reviewer_prompt_path),
+            domain_name=config.domain.name,
+            max_tokens=ag.max_tokens,
+            temperature=ag.review_temperature,  # streng/deterministisch
+        )
+        answer_generator = MultiAgentAnswerGenerator(
+            solver=solver,
+            reviewer=reviewer,
+            fallback_generator=single_pass,
+            enable_review=ag.enable_review,
+            max_revisions=ag.max_revisions,
         )
     else:
         raise ValueError(f"Unknown answer_generator: {config.answer_generator.implementation}")

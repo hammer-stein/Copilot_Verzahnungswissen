@@ -199,6 +199,31 @@ function toSources(sources, documents) {
   });
 }
 
+/* German label + icon per agent role for the prüfbarer Lösungsweg (agent_trace). */
+const AGENT_META = {
+  orchestrator: { label: 'Orchestrator', icon: 'cog' },
+  solver: { label: 'Lösungs-Agent', icon: 'sparkles' },
+  reviewer: { label: 'Prüf-Agent', icon: 'shield-check' },
+};
+
+/* Map backend agent_trace[] → the {agent, label, icon, title, content, status} shape ReasoningAccordion renders.
+   Returns [] when the answer carries no trace (classic single-pass) → the UI then renders nothing. */
+function toSteps(trace) {
+  return (trace || [])
+    .filter((s) => s && (s.content || s.title))
+    .map((s) => {
+      const meta = AGENT_META[s.agent] || { label: s.agent || 'Agent', icon: 'cog' };
+      return {
+        agent: s.agent || '',
+        label: meta.label,
+        icon: meta.icon,
+        title: s.title || meta.label,
+        content: s.content || '',
+        status: s.status || '',
+      };
+    });
+}
+
 const PDF_RE = /\.pdf$/i;
 const STEP_RE = /\.(step|stp|stp242|p21|iges|igs)$/i;
 const JSON_RE = /\.json$/i;
@@ -389,6 +414,8 @@ function App() {
         title: ans.question || text,
         body: renderAnswer(ans.answer_text, Citation),
         sources: toSources(ans.sources, sourceDocuments),
+        steps: toSteps(ans.agent_trace),   // prüfbarer Lösungsweg (leer beim Single-Pass)
+        review: ans.review || null,        // Gesamturteil des Prüf-Agenten
       });
     } catch (e) {
       appendMsg(chatId, {

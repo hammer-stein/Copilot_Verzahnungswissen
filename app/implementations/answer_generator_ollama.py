@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 from typing import Any, Optional
 
-from app.core.types import Answer, RetrievedChunk
+from app.core.types import Answer, AnswerSource, RetrievedChunk
 from app.core.utils import stable_json_dumps
 from app.implementations.ollama_client import OllamaClient
 
@@ -159,6 +159,22 @@ FORMAT_INSTRUCTIONS: dict[str, str] = {
 }
 DEFAULT_FORMAT = "standard"
 
+# Ohne Retriever-Treffer: neutraler Marker statt negativer Formulierung. Negative Sätze
+# ("keine Treffer gefunden") treiben kleine LLMs unnötig in die Verweigerung, und ohne diesen
+# Zusatz kommentieren sie den leeren Block mit einer sinnlosen [Q1]-Markierung.
+NO_CHUNKS_NOTICE = (
+    "Derzeit liegen keine Wissensauszüge vor. Beantworte die Frage allein aus den "
+    "BAUTEILDATEN und verwende KEINE [Q]-Markierungen."
+)
+
+
+def resolve_format_instruction(answer_format: Optional[str]) -> str:
+    """Übersetzt die Format-Auswahl (kurz/standard/…) in die konkrete LLM-Anweisung; Fallback: standard."""
+    return FORMAT_INSTRUCTIONS.get(
+        (answer_format or DEFAULT_FORMAT).strip().casefold(),
+        FORMAT_INSTRUCTIONS[DEFAULT_FORMAT],
+    )
+
 
 def _source_title(chunk_source_path: str, metadata: dict[str, Any]) -> str:
     """
@@ -181,6 +197,37 @@ def _source_title(chunk_source_path: str, metadata: dict[str, Any]) -> str:
         return "Unbenanntes Dokument"
 
     return name
+
+
+def build_chunks_block_and_sources(
+    chunks: list[RetrievedChunk],
+) -> tuple[str, list[AnswerSource]]:
+    """
+    Formatiert die Retriever-Chunks zu einem [Q1]/[Q2]-Prompt-Block samt zugehöriger
+    Source-Liste fürs Frontend. Gemeinsam genutzt vom Single-Pass- und vom Multi-Agenten-Generator,
+    damit Quellennummerierung ([Q1] …) und Zitierkontext garantiert identisch sind.
+    Ohne Treffer wird ein neutraler Hinweis-Block (NO_CHUNKS_NOTICE) statt einer leeren Zeichenkette geliefert.
+    """
+    chunk_lines: list[str] = []
+    sources: list[AnswerSource] = []
+    for idx, rc in enumerate(chunks, start=1):
+        qid = f"Q{idx}"
+        source_title = _source_title(rc.chunk.source_path, rc.metadata or {})
+        chunk_lines.append(f"[{qid}] Quelle: {source_title}, Seite {rc.chunk.page_number}")
+        chunk_lines.append(rc.chunk.text.strip())
+        chunk_lines.append("---")
+        sources.append({
+            "qid": qid,
+            "doc_hash": rc.chunk.doc_hash,
+            "source_path": rc.chunk.source_path,
+            "title": source_title,
+            "page_number": rc.chunk.page_number,
+            "similarity": float(rc.similarity),
+            "text": rc.chunk.text,
+        })
+
+    chunks_block = "\n".join(chunk_lines).strip() or NO_CHUNKS_NOTICE
+    return chunks_block, sources
 
 
 class OllamaAnswerGenerator:
@@ -217,40 +264,14 @@ class OllamaAnswerGenerator:
         Wandelt Chunks in einen [Q1]/[Q2]-Block um, fügt CAD-Kontext hinzu und ruft das LLM auf.
         answer_format steuert den AUSGABEFORMAT-Abschnitt des Prompts (kurz/standard/ausführlich/…).
         Gibt ein Answer-Dict zurück mit Antworttext und source-Liste für das Frontend.
-        question ist immer die ORIGINALFRAGE des Nutzers – nicht die umgeschriebene Retrieval-Anfrage.
+        question ist die Originalfrage des Nutzers (es gibt kein Query-Rewriting).
         """
 
-        # Chunks als lesbaren Block formatieren: [Q1] Quelle: datei.pdf, Seite 5 \n <text> \n ---
-        chunk_lines: list[str] = []
-        sources = []
-        for idx, rc in enumerate(chunks, start=1):
-            qid = f"Q{idx}"
-            source_title = _source_title(rc.chunk.source_path, rc.metadata or {})
-            chunk_lines.append(f"[{qid}] Quelle: {source_title}, Seite {rc.chunk.page_number}")
-            chunk_lines.append(rc.chunk.text.strip())
-            chunk_lines.append("---")
-            sources.append({
-                "qid": qid,
-                "doc_hash": rc.chunk.doc_hash,
-                "source_path": rc.chunk.source_path,
-                "title": source_title,
-                "page_number": rc.chunk.page_number,
-                "similarity": float(rc.similarity),
-                "text": rc.chunk.text,
-            })
+        # Chunks als lesbaren [Q1]/[Q2]-Block + Source-Liste (gemeinsamer Helper, auch vom
+        # Multi-Agenten-Generator genutzt – garantiert identische Quellennummerierung).
+        chunks_block, sources = build_chunks_block_and_sources(chunks)
 
-        format_instruction = FORMAT_INSTRUCTIONS.get(
-            (answer_format or DEFAULT_FORMAT).strip().casefold(),
-            FORMAT_INSTRUCTIONS[DEFAULT_FORMAT],
-        )
-
-        # Ohne Treffer: neutraler Marker + explizite Anweisung. Negative Formulierungen
-        # ("keine Treffer gefunden") treiben kleine LLMs unnötig in die Verweigerung, und ohne
-        # den Zusatz kommentieren sie den leeren Block mit einer sinnlosen [Q1]-Markierung.
-        chunks_block = "\n".join(chunk_lines).strip() or (
-            "Derzeit liegen keine Wissensauszüge vor. Beantworte die Frage allein aus den "
-            "BAUTEILDATEN und verwende KEINE [Q]-Markierungen."
-        )
+        format_instruction = resolve_format_instruction(answer_format)
 
         # CAD-Daten als deutsch beschrifteter Klartext plus vollständiges Roh-JSON,
         # damit CAD-only-Fragen auch ohne Retriever-Treffer beantwortbar bleiben.

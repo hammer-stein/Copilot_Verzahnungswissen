@@ -10,17 +10,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from app.core.config import load_config
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yaml"
 
 
-def test_local_defaults_use_embedded_qdrant_and_stub(monkeypatch):
+def test_local_defaults_pass_through_without_env(monkeypatch):
+    # Ohne gesetzte Env-Variablen werden die Werte aus der config.yaml unverändert übernommen
+    # (kein Umschalten auf Server-/Service-Modus). Gegen die roh geladene YAML geprüft, damit
+    # der Test unabhängig von den konkreten lokalen Einstellungen gültig bleibt.
     for var in ("QDRANT_HOST", "QDRANT_PORT", "CAD_PROCESSOR_URL", "OLLAMA_URL"):
         monkeypatch.delenv(var, raising=False)
+    raw = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
     cfg = load_config(CONFIG_PATH)
-    assert cfg.vector_store.path == "storage/qdrant"  # eingebetteter Modus lokal
-    assert cfg.cad_adapter.implementation == "random_gear_stub"
+    assert cfg.vector_store.path == raw["vector_store"].get("path")
+    assert cfg.cad_adapter.implementation == raw["cad_adapter"]["implementation"]
 
 
 def test_qdrant_host_env_forces_server_mode(monkeypatch):
@@ -44,4 +50,4 @@ def test_cad_processor_url_env_switches_to_http_adapter(monkeypatch):
 def test_ollama_url_env_override(monkeypatch):
     monkeypatch.setenv("OLLAMA_URL", "http://host.docker.internal:11434")
     cfg = load_config(CONFIG_PATH)
-    assert cfg.metadata_extractor.ollama_url == "http://host.docker.internal:11434"
+    assert cfg.answer_generator.ollama_url == "http://host.docker.internal:11434"

@@ -4,7 +4,7 @@ cad_processor_client.py – HTTP-Client für den CAD-Processor-Service (Gruppe B
 Implementiert das CADAdapter-Protocol: Sendet eine STEP-Datei an den
 cad_processor (POST /analyze, Port 8001) und gibt das vollständige
 GearParameters-JSON (cad_processor/src/output_schema.py) unverändert zurück.
-Das JSON fließt in das Query-Rewriting und die Antwortgenerierung ein.
+Das JSON fließt erst in der Antwortstufe als Bauteilkontext ein – nicht ins Retrieval.
 """
 
 from __future__ import annotations
