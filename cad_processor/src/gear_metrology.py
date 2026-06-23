@@ -64,6 +64,14 @@ ALL_MODULES = sorted(set(STANDARD_MODULES) | set(INCH_MODULES))
 MIN_SECTIONS = 28
 MAX_SECTIONS = 72
 
+# Ein Schnitt, der länger als dies dauert, gilt als „pathologisch langsam"
+# (BRepAlgoAPI_Section-Degeneration auf unsauberer B-Rep). Tritt das auf, schaltet
+# die Vermessung in den Früh-Stopp-Modus (sobald ein belastbares Band steht).
+SLOW_SECTION_S = 3.0
+# Mindest-Bandlänge für den Früh-Stopp: lang genug für stabile Median-Maße
+# (Kopf-/Fußkreis, Modul), aber erreichbar bevor zu viele langsame Schnitte laufen.
+EARLY_STOP_BAND = 6
+
 
 # ─────────────────────────────────────────────────────────────
 # Achsen- und Frame-Bestimmung
@@ -485,15 +493,36 @@ def extract_metrology(shape, n_sections: int = 48, NA: int = 720,
         # ein Sicherheits-Abbruch (Zeitlimit unter Last) die Achse trotzdem
         # gleichmäßig abdeckt und den Zahnkranz nicht verfehlt. Nach dem Sammeln
         # wieder nach Achs-Koordinate sortieren (die Bandbildung braucht z-Ordnung).
+        #
+        # ROBUSTHEIT gegen pathologisch langsame Schnitte: Bei manchen (realen,
+        # unsauberen) B-Reps degeneriert BRepAlgoAPI_Section an EINZELNEN Achs-
+        # positionen katastrophal (60–100 s statt <1 s — z. B. wo die Ebene den
+        # Zahn-AUSLAUF/Naben-Übergang tangential streift). Solche Schnitte lassen
+        # sich in OCC weder beschleunigen noch hart abbrechen. Damit das nicht den
+        # ganzen Lauf ins Zeitlimit treibt (→ zu kurzes Band → Totalausfall, stark
+        # orientierungsabhängig), wird nach JEDEM Schnitt geprüft, ob bereits ein
+        # belastbares Zahnkranz-Band vorliegt — UND, falls langsame Schnitte
+        # auftraten, früh abgebrochen. Schnelle (saubere) Dateien sehen kein
+        # `saw_slow` und laufen unverändert die volle Schnittzahl durch.
         sections: List[Dict[str, Any]] = []
-        hard_deadline = time_budget_s * 2.5
+        saw_slow = max(probe_costs) > SLOW_SECTION_S if probe_costs else False
         for i in _stratified_order(n_sections):
+            # Pathologische B-Reps mit einzelnen 60–100-s-Schnitten brauchen unter
+            # Last mehr Zeit, bis das Zahnkranz-Band steht; sonst wird die Deadline
+            # GENAU im falschen Moment gerissen (Band < 3 → Totalausfall, nur unter
+            # Last reproduzierbar). Deadline daher bei erkannt langsamer Geometrie
+            # großzügiger; saubere Dateien (saw_slow=False, Sekundenbereich) sind
+            # davon unberührt und stoppen längst über die Schnittzahl.
+            hard_deadline = time_budget_s * (5.0 if saw_slow else 2.5)
             if time.time() - t_start > hard_deadline:
                 _log.warning("Sicherheits-Stopp der Vermessung nach %d Schnitten",
                              len(sections))
                 break
             z0 = zmin + length * (i + 0.5) / n_sections
+            t_sec = time.time()
             pts = _section_points(shape, com, axis, u, v, z0, spacing)
+            if time.time() - t_sec > SLOW_SECTION_S:
+                saw_slow = True
             if not pts:
                 continue
             outer_prof, cov_o = _radial_profile(pts, NA, outer=True)
@@ -522,6 +551,21 @@ def extract_metrology(shape, n_sections: int = 48, NA: int = 720,
             # Innenradius (Bohrungskandidat): kleinster r überhaupt
             entry["r_inner"] = min(r for r, _ in pts)
             sections.append(entry)
+
+            # Früh-Stopp NUR bei nachgewiesen langsamer B-Rep: sobald genügend
+            # Schnitte gesammelt sind UND ein belastbares Band vorliegt, abbrechen
+            # — das verhindert, dass weitere pathologische Schnitte das Zeitlimit
+            # ausschöpfen, und liefert trotzdem ein korrektes Ergebnis. Saubere
+            # Dateien (saw_slow=False) laufen unverändert vollständig durch.
+            if saw_slow and len(sections) >= MIN_SECTIONS // 2:
+                ss = sorted(sections, key=lambda s: s["z"])
+                b_o = _longest_band(ss, "z_out")
+                b_i = _longest_band(ss, "z_in")
+                best_len = max((b["len"] for b in (b_o, b_i) if b), default=0)
+                if best_len >= EARLY_STOP_BAND:
+                    _log.info("Früh-Stopp nach %d Schnitten (Band-Länge %d)",
+                              len(sections), best_len)
+                    break
 
         if not sections:
             return result
