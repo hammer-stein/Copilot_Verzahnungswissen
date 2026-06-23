@@ -32,7 +32,7 @@ Persistente Projektdaten unter storage/
 ### 1. Repository vorbereiten
 
 ```bash
-cd "/pfad/zum/KI-Copilot für Verzahnungswissen"
+cd "/pfad/zum/KI-Copilot für Verzahnungswissen" # z.B. cd "/Users/maxhammerstein/Projects/KI-Copilot für Verzahnungswissen"
 cp config.example.yaml config.yaml
 ```
 
@@ -53,8 +53,6 @@ ollama pull llama3.2:3b
 ```
 
 Falls Ollama nicht bereits als Dienst läuft, `ollama serve` in einem separaten Terminal, `screen`/`tmux` oder als Systemdienst starten.
-
-Hinweis: Der gewünschte Tag `llama3.2:8b` existiert in Ollama nicht. Für den 8B-Betrieb verwendet das Projekt deshalb `llama3.1:8b`. Wenn ein anderes Modell genutzt wird, `answer_generator.model_name` in `config.yaml` anpassen.
 
 ### 4. Qdrant wählen
 
@@ -94,16 +92,6 @@ http://localhost:8000/
 
 ```bash
 GEAR_COPILOT_RELOAD=1 ./scripts/start_local.sh
-```
-
-Auf einem externen Server gibt es zwei übliche Varianten:
-
-```bash
-# empfohlen hinter Reverse Proxy: nur lokal binden
-./scripts/start_local.sh
-
-# direkte Erreichbarkeit im Servernetz, Firewall/Proxy separat absichern
-GEAR_COPILOT_HOST=0.0.0.0 GEAR_COPILOT_PORT=8000 ./scripts/start_local.sh
 ```
 
 ## Laufender Anfrageprozess
