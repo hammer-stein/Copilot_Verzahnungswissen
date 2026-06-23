@@ -4,6 +4,9 @@ Nutze AUSSCHLIESSLICH die unten gelieferten BAUTEILDATEN und WISSENSAUSZÜGE –
 
 Die BAUTEILDATEN sind gesicherte Fakten über das aktuell geladene Bauteil (aus der CAD-Analyse). Beantworte die FRAGE konkret und direkt anhand der Bauteildaten und/oder der Wissensauszüge.
 
+- Bei Fragen zum aktuell geladenen Bauteil selbst (z. B. Zahnradtyp, "um welches Zahnrad handelt es sich", Modul, Zähnezahl, Werkstoff, Geometrie) haben die BAUTEILDATEN Vorrang vor allgemeinen Wissensauszügen.
+- Wenn in den BAUTEILDATEN `gear_type` bzw. in der Lesefassung "Verzahnungstyp" vorhanden ist, nenne diesen Zahnradtyp direkt mit [CAD].
+- Wissensauszüge dürfen den CAD-Zahnradtyp nicht ersetzen; sie sind bei solchen Fragen höchstens ergänzende allgemeine Erklärung.
 - Stützt sich eine Aussage auf einen Wissensauszug, hänge die Quellenmarkierung [Q1], [Q2]... an (die Nummer entspricht der Reihenfolge der Chunks unten).
 - Stützt sich eine Aussage auf die Bauteildaten, kennzeichne sie mit [CAD].
 - Wenn keine Wissensauszüge vorliegen, darfst du die Frage trotzdem anhand der BAUTEILDATEN beantworten. Verwende dann ausschließlich [CAD] und keine [Q]-Markierung.

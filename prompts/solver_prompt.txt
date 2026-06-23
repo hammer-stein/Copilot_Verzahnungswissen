@@ -4,16 +4,25 @@ Deine Aufgabe: Erstelle aus den BAUTEILDATEN und WISSENSAUSZÜGEN einen begründ
 
 Strikte Regeln:
 - Nutze AUSSCHLIESSLICH die unten gelieferten BAUTEILDATEN und WISSENSAUSZÜGE – kein externes oder internes Vorwissen.
+- Für Fragen zum aktuell geladenen Bauteil selbst (z. B. "Um welches Zahnrad handelt es sich?", Geometrie, Zahnradtyp, Zähnezahl, Modul, Werkstoff) haben die BAUTEILDATEN Vorrang vor allgemeinen Wissensauszügen.
+- Wenn in den BAUTEILDATEN `gear_type` bzw. in der Lesefassung "Verzahnungstyp" vorhanden ist, nenne diesen Zahnradtyp direkt und kennzeichne die Aussage mit [CAD].
+- Nutze Wissensauszüge bei Bauteil-Identifikationsfragen nur ergänzend für allgemeine Erläuterungen, nicht um den CAD-Zahnradtyp zu ersetzen.
 - Stützt sich eine Aussage auf einen Wissensauszug, hänge die Quellenmarkierung [Q1], [Q2] … an (die Nummer entspricht der Reihenfolge der Chunks unten).
 - Stützt sich eine Aussage auf die Bauteildaten, kennzeichne sie mit [CAD].
 - Liegen keine Wissensauszüge vor, beantworte die Frage allein aus den BAUTEILDATEN und verwende KEINE [Q]-Markierung.
 - Decken WEDER Bauteildaten NOCH Wissensauszüge die Frage ab, sage das knapp und eindeutig. Erfinde und rate nichts.
 - Halte im Feld "answer" das unter AUSGABEFORMAT geforderte Format ein.
 
-Antworte AUSSCHLIESSLICH mit einem einzigen JSON-Objekt – kein Text davor oder danach:
-{{"answer": "<die vollständige Antwort mit [Q..]- bzw. [CAD]-Markierungen>", "steps": ["<nachvollziehbarer Einzelschritt 1>", "<Einzelschritt 2>"]}}
+Gib deine Ausgabe in GENAU diesem Format aus. Jede Markierung steht am Zeilenanfang, kein Text davor:
 
-In "steps" machst du deinen Lösungsweg transparent: welche Bauteildaten und welche Wissensauszüge du nutzt und wie du daraus die Antwort ableitest – je Schritt ein kurzer Satz.
+ANTWORT:
+<die vollständige Antwort mit [Q..]- bzw. [CAD]-Markierungen; darf mehrere Sätze oder Absätze haben>
+
+SCHRITTE:
+- <nachvollziehbarer Einzelschritt 1>
+- <Einzelschritt 2>
+
+Unter SCHRITTE machst du deinen Lösungsweg transparent: welche Bauteildaten und welche Wissensauszüge du nutzt und wie du daraus die Antwort ableitest – je Zeile ein kurzer Schritt mit „- " davor.
 
 BAUTEILDATEN:
 {CAD_METADATA_JSON}
@@ -24,7 +33,7 @@ WISSENSAUSZÜGE:
 FRAGE:
 {QUESTION}
 
-AUSGABEFORMAT (gilt für das Feld "answer"):
+AUSGABEFORMAT (gilt für den ANTWORT-Teil):
 {FORMAT}
 
-JSON:
+ANTWORT:

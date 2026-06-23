@@ -62,6 +62,7 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
     # Lazy-Importe: erst hier werden die schweren Abhängigkeiten geladen.
     from app.implementations.answer_generator_ollama import OllamaAnswerGenerator
     from app.implementations.cad_processor_client import CadProcessorClient
+    from app.implementations.cad_processor_local import LocalCadProcessorAdapter
     from app.implementations.cad_synthetic_json import SyntheticCadJsonAdapter
     from app.implementations.chunker_recursive import RecursiveTextChunker
     from app.implementations.chunker_semantic import SemanticChunker
@@ -114,6 +115,12 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
     cad_adapter: CADAdapter
     if config.cad_adapter.implementation == "synthetic_json":
         cad_adapter = synthetic_cad_adapter
+    elif config.cad_adapter.implementation == "cad_processor_local":
+        local_adapter = LocalCadProcessorAdapter(
+            cad_processor_dir=base_dir / "cad_processor",
+        )
+        local_adapter.validate_available()
+        cad_adapter = local_adapter
     elif config.cad_adapter.implementation == "cad_processor_http":
         cad_adapter = CadProcessorClient(
             url=config.cad_adapter.url,

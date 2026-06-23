@@ -9,7 +9,7 @@ die richtige Methode zu haben (structural subtyping / Duck Typing mit Typprüfun
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Callable, Optional, Protocol
 
 from app.core.types import (
     Answer,
@@ -75,9 +75,12 @@ class VectorStore(Protocol):
     def list_documents(self) -> list[DocumentInfo]: ...
 
 
+ProgressCallback = Callable[[str], None]
+
+
 class Retriever(Protocol):
     """Findet relevante Chunks für die Nutzerfrage. Aktuelle Impl.: HybridRetriever."""
-    def retrieve(self, question: str) -> list[RetrievedChunk]: ...
+    def retrieve(self, question: str, progress_callback: Optional[ProgressCallback] = None) -> list[RetrievedChunk]: ...
 
 
 class AnswerGenerator(Protocol):
@@ -89,4 +92,5 @@ class AnswerGenerator(Protocol):
         chunks: list[RetrievedChunk],
         cad_metadata: dict,
         answer_format: Optional[str] = None,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> Answer: ...
