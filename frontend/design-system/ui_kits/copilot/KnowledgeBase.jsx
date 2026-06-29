@@ -85,18 +85,18 @@ function KnowledgeBase({
   };
 
   const uploadFiles = async (files, preserveFolders = false) => {
-    const pdfs = Array.from(files || []).filter((f) => /\.pdf$/i.test(f.name));
-    if (pdfs.length === 0) {
-      setNotice('Keine PDF-Dateien gefunden.');
+    const allowed = Array.from(files || []).filter((f) => /\.(pdf|csv)$/i.test(f.name));
+    if (allowed.length === 0) {
+      setNotice('Keine unterstützten Dateien (PDF, CSV) gefunden.');
       return;
     }
-    setNotice(`${pdfs.length.toLocaleString('de-DE')} PDF-Datei(en) werden hochgeladen...`);
+    setNotice(`${allowed.length.toLocaleString('de-DE')} Datei(en) werden hochgeladen...`);
     try {
-      const result = await onUpload(pdfs, selectedFolder, { preserveFolders });
+      const result = await onUpload(allowed, selectedFolder, { preserveFolders });
       const failed = result && result.failed ? result.failed : 0;
       setNotice(failed
-        ? `${(result.uploaded || 0).toLocaleString('de-DE')} PDF-Datei(en) hochgeladen, ${failed.toLocaleString('de-DE')} fehlgeschlagen.`
-        : `${pdfs.length.toLocaleString('de-DE')} PDF-Datei(en) hochgeladen.`);
+        ? `${(result.uploaded || 0).toLocaleString('de-DE')} Datei(en) hochgeladen, ${failed.toLocaleString('de-DE')} fehlgeschlagen.`
+        : `${allowed.length.toLocaleString('de-DE')} Datei(en) hochgeladen.`);
     } catch (e) {
       setNotice(`Upload fehlgeschlagen: ${String(e.message || e)}`);
     }
@@ -220,16 +220,16 @@ function KnowledgeBase({
               </div>
             </div>
             <div className="vc-library__actions">
-              <input ref={fileRef} type="file" accept=".pdf,application/pdf" multiple style={{ display: 'none' }} onChange={async (e) => {
+              <input ref={fileRef} type="file" accept=".pdf,.csv" multiple style={{ display: 'none' }} onChange={async (e) => {
                 await uploadFiles(e.target.files, false);
                 e.target.value = '';
               }} />
-              <input ref={folderRef} type="file" accept=".pdf,application/pdf" multiple webkitdirectory="" directory="" style={{ display: 'none' }} onChange={async (e) => {
+              <input ref={folderRef} type="file" accept=".pdf,.csv" multiple webkitdirectory="" directory="" style={{ display: 'none' }} onChange={async (e) => {
                 await uploadFiles(e.target.files, true);
                 e.target.value = '';
               }} />
               <Button variant="primary" iconLeft={<Icon name="upload" size={15} />} onClick={() => fileRef.current && fileRef.current.click()}>
-                PDFs hochladen
+                Dokumente hochladen
               </Button>
               <Button variant="secondary" iconLeft={<Icon name="folder-up" size={15} />} onClick={() => folderRef.current && folderRef.current.click()}>
                 Ordner hochladen

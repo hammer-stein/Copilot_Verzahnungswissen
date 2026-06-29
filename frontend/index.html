@@ -19,11 +19,11 @@
       <p class="muted">Striktes RAG: Antworten nur aus hochgeladenen PDFs + Bauteildaten. Die CAD-Parameter fließen als Kontext in die Antwortgenerierung ein.</p>
 
       <details open>
-        <summary><strong>Wissensbasis</strong> (PDF Upload)</summary>
+        <summary><strong>Wissensbasis</strong> (PDF/CSV Upload)</summary>
         <div class="grid2">
           <div>
-            <label>PDF hochladen
-              <input id="pdf" type="file" accept="application/pdf" />
+            <label>Dokument hochladen
+              <input id="pdf" type="file" accept="application/pdf, .csv" />
             </label>
             <button id="uploadBtn">Indexieren</button>
             <small id="uploadStatus" class="muted"></small>
