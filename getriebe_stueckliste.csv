@@ -1,0 +1,17 @@
+Bauteil_ID,Bezeichnung,Menge,Werkstoff,Modul_mm,Zaehnezahl,Oberflaechenhaerte
+G-001,Stirnrad Antriebswelle,1,16MnCr5,3.0,24,58 HRC
+G-002,Stirnrad Zwischenwelle,1,16MnCr5,3.0,48,58 HRC
+G-003,Ritzel Zwischenwelle,1,16MnCr5,4.5,16,60 HRC
+G-004,Hohlrad Ausgangsstufe,1,42CrMo4,4.5,64,52 HRC
+W-101,Antriebswelle,1,16MnCr5,-,-,einsatzgehärtet
+W-102,Zwischenwelle,1,16MnCr5,-,-,einsatzgehärtet
+W-103,Ausgangswelle,1,42CrMo4,-,-,vergütet
+L-201,Rillenkugellager 6204,2,100Cr6,-,-,Standard
+L-202,Kegelrollenlager 30206,2,100Cr6,-,-,Standard
+D-301,Wellendichtring 20x35x7,2,NBR,-,-,Standard
+D-302,Gehäusedichtung,1,AFM 34,-,-,flüssig
+H-401,Getriebegehäuse Unterschale,1,EN-GJL-250,-,-,sandgestrahlt
+H-402,Getriebegehäuse Oberschale,1,EN-GJL-250,-,-,sandgestrahlt
+S-501,Zylinderschraube M8x35,12,Stahl 8.8,-,-,galvanisch verzinkt
+S-502,Passfeder A 6x6x20,3,C45E,-,-,Standard
+O-601,Getriebeöl CLP 220,1.5,Mineralöl,-,-,Liter

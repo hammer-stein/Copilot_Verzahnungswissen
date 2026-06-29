@@ -2,7 +2,7 @@
 types.py – Gemeinsame Datenstrukturen für die gesamte Pipeline.
 
 Definiert alle Datencontainer, die zwischen den Komponenten ausgetauscht werden –
-von der PDF-Datei bis zur fertigen Antwort. Alle Klassen sind frozen dataclasses
+von der Datei bis zur fertigen Antwort. Alle Klassen sind frozen dataclasses
 (unveränderlich) für Thread-Sicherheit bei parallelen Anfragen.
 """
 
@@ -15,19 +15,19 @@ from typing_extensions import NotRequired, TypedDict
 
 
 # ---------------------------------------------------------------------------
-# Indexierungs-Datenstrukturen (Weg: PDF → Qdrant)
+# Indexierungs-Datenstrukturen (Weg: Dokument → Qdrant)
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class RawDocumentPage:
-    """Einzelne Seite eines geladenen Dokuments. Erzeugt von PDFLoader, verarbeitet vom Chunker."""
+    """Einzelne Seite eines geladenen Dokuments. Erzeugt von Loader, verarbeitet vom Chunker."""
     page_number: int  # 1-basiert
     text: str
 
 
 @dataclass(frozen=True)
 class RawDocument:
-    """Vollständig geladenes Dokument mit allen Seiten. doc_hash dient als stabiler Dokumentenidentifikator."""
+    """Vollständig geladenes Dokument mit allen Seiten. doc_hash ist der Identifikator."""
     source_path: str
     doc_hash: str   # SHA-256 der Datei – ermöglicht Deduplikation und Löschung
     pages: list[RawDocumentPage]
@@ -35,45 +35,42 @@ class RawDocument:
 
 @dataclass(frozen=True)
 class Chunk:
-    """
-    Einzelnes Textsegment aus einem Dokument. Atomare Wissenseinheit des Systems.
-    Trägt Herkunftsinformationen (source_path, page_number, doc_hash) die bis in die Antwort erhalten bleiben.
-    """
+    """Einzelnes Textsegment aus einem Dokument."""
     text: str
     source_path: str
-    page_number: int   # 1-basiert
-    position: int      # monoton steigend innerhalb eines Dokuments
+    page_number: int
+    position: int
     doc_hash: str
 
 
 @dataclass(frozen=True)
 class EmbeddingResult:
-    """Ergebnis eines Embedder-Aufrufs. dense_vectors[i] entspricht texts[i] des Eingabe-Batches."""
+    """Ergebnis eines Embedder-Aufrufs."""
     dense_vectors: list[list[float]]
-    sparse_vectors: Optional[list[dict[str, Any]]] = None  # aktuell nicht genutzt
+    sparse_vectors: Optional[list[dict[str, Any]]] = None
 
 
 @dataclass(frozen=True)
 class EmbeddedChunk:
-    """Chunk angereichert mit Embedding-Vektor und LLM-extrahierten Metadaten. Wird in Qdrant gespeichert."""
+    """Chunk angereichert mit Embedding-Vektor und Metadaten. Wird in Qdrant gespeichert."""
     chunk: Chunk
     dense_vector: list[float]
     sparse_vector: Optional[dict[str, Any]]
-    metadata: dict[str, Any]  # z.B. {"verzahnungstyp": "Stirnrad", "modul_min": 2.0}
+    metadata: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
-# Retrieval-Datenstrukturen (Weg: Frage → Antwort)
+# Retrieval-Datenstrukturen
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class SearchResult:
-    """Einzelnes Ergebnis aus Qdrant-Suche. Enthält rekonstruierten Chunk und Ähnlichkeits-Score."""
+    """Einzelnes Ergebnis aus Qdrant-Suche."""
     chunk: Chunk
     metadata: dict[str, Any]
     dense_score: Optional[float]
     sparse_score: Optional[float]
-    score: float  # finaler Score (aktuell = dense_score)
+    score: float
 
 
 @dataclass(frozen=True)
@@ -81,17 +78,17 @@ class RetrievedChunk:
     """Vom Retriever ausgewählter Chunk, bereit für den AnswerGenerator."""
     chunk: Chunk
     metadata: dict[str, Any]
-    similarity: float  # Kosinus-Ähnlichkeit zur Frage (0.0–1.0)
+    similarity: float
 
 
 @dataclass(frozen=True)
 class DocumentInfo:
-    """Zusammenfassung eines indizierten Dokuments. Wird von GET /documents für das Frontend geliefert."""
+    """Zusammenfassung eines indizierten Dokuments für das Frontend."""
     source_path: str
-    doc_hash: str      # dient als Lösch-ID: DELETE /documents/{doc_hash}
+    doc_hash: str
     chunk_count: int
-    file_name: str = ""  # ursprünglicher Dateiname (für die Anzeige in der UI)
-    folder: str = ""     # Ordner zur Organisation der Wissensbasis ("" = kein Ordner)
+    file_name: str = ""
+    folder: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +96,6 @@ class DocumentInfo:
 # ---------------------------------------------------------------------------
 
 class AnswerSource(TypedDict):
-    """Eine Quellenangabe innerhalb einer Antwort. Referenziert via qid ([Q1], [Q2], ...) im Antworttext."""
     qid: str
     doc_hash: str
     source_path: str
@@ -110,31 +106,21 @@ class AnswerSource(TypedDict):
 
 
 class AgentStep(TypedDict):
-    """
-    Ein einzelner, für den Nutzer nachvollziehbarer Schritt des Multi-Agenten-Flows
-    (Orchestrator → Solver → Reviewer). Wird im Frontend als „Lösungsweg & Prüfung"
-    aufklappbar angezeigt und erfüllt damit die geforderte Prüfbarkeit der Antwort.
-    Beim klassischen Single-Pass-Generator bleibt das Feld leer/abwesend.
-    """
-    agent: str                  # "orchestrator" | "solver" | "reviewer"
-    title: str                  # z.B. "Lösungsentwurf", "Plausibilitätsprüfung"
-    content: str                # Klartext-Begründung / geprüfter Einzelschritt
-    status: NotRequired[str]    # "ok" | "warnung" | "korrigiert" | "freigegeben" | "fallback"
+    agent: str
+    title: str
+    content: str
+    status: NotRequired[str]
 
 
 class ReviewSummary(TypedDict):
-    """Gesamturteil des Review-Agenten über den vorgeschlagenen Lösungsentwurf."""
-    status: str                       # "freigegeben" | "korrigiert" | "unsicher"
-    summary: str                      # kurzer Befund des Reviewers
-    issues: NotRequired[list[str]]    # konkrete Beanstandungen (falls vorhanden)
+    status: str
+    summary: str
+    issues: NotRequired[list[str]]
 
 
 class Answer(TypedDict):
-    """Vollständige Antwort auf eine Frage. Erzeugt vom AnswerGenerator, direkt als JSON serialisiert."""
     question: str
-    answer_text: str   # enthält Inline-Quellenverweise [Q1], [Q2], ...
+    answer_text: str
     sources: list[AnswerSource]
-    # Optionale Multi-Agenten-Felder (NotRequired) – abwärtskompatibel: der Single-Pass-Generator
-    # und ältere Logs/Tests ohne diese Schlüssel bleiben gültig.
-    agent_trace: NotRequired[list[AgentStep]]   # die nachvollziehbaren „Gedankengänge"
-    review: NotRequired[ReviewSummary]          # Gesamturteil des Reviewers
+    agent_trace: NotRequired[list[AgentStep]]
+    review: NotRequired[ReviewSummary]

@@ -148,15 +148,17 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         return {"status": "ok"}
 
     @app.post("/upload")
-    async def upload_pdf(file: UploadFile = File(...), folder: str = Form("")):
+    async def upload_document(file: UploadFile = File(...), folder: str = Form("")):
         """
-        Nimmt eine PDF-Datei entgegen, speichert sie temporär und startet die Indexierungs-Pipeline.
+        Nimmt eine Datei entgegen (PDF, CSV, Excel), speichert sie temporär und startet die Indexierungs-Pipeline.
         Optionaler Form-Parameter `folder` ordnet das Dokument einem UI-Ordner zu.
         asyncio.to_thread() verhindert, dass die synchrone Indexierung den Event-Loop blockiert.
         """
         original_name = Path(file.filename or "").name
-        if not original_name.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF upload supported.")
+        allowed_extensions = (".pdf", ".csv", ".xlsx", ".xls")
+        
+        if not original_name.lower().endswith(allowed_extensions):
+            raise HTTPException(status_code=400, detail="Only PDF, CSV, and Excel uploads supported.")
 
         folder = (folder or "").strip()
 
@@ -168,8 +170,9 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         dest.write_bytes(content)
 
         try:
+            # HIER WURDE index_pdf ZU index_document GEÄNDERT
             info = await asyncio.to_thread(
-                indexer.index_pdf, dest, file_name=original_name, folder=folder
+                indexer.index_document, dest, file_name=original_name, folder=folder
             )
         except Exception as e:
             logger.exception("indexing_failed file=%s", dest)

@@ -52,6 +52,22 @@ class Components:
         self.answer_generator = answer_generator
 
 
+class UniversalLoader(DocumentLoader):
+    """Router, der je nach Dateiendung den passenden Loader aufruft."""
+    def __init__(self, pdf_loader: DocumentLoader, tabular_loader: DocumentLoader):
+        self.pdf_loader = pdf_loader
+        self.tabular_loader = tabular_loader
+
+    def load(self, file_path: Path):
+        ext = file_path.suffix.lower()
+        if ext == ".pdf":
+            return self.pdf_loader.load(file_path)
+        elif ext in [".csv", ".xlsx", ".xls"]:
+            return self.tabular_loader.load(file_path)
+        else:
+            raise ValueError(f"Kein passender Loader für das Format {ext} gefunden.")
+
+
 def build_components(config: AppConfig, *, base_dir: Path) -> Components:
     """
     Baut alle Systemkomponenten aus der validierten Konfiguration auf.
@@ -67,11 +83,14 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
     from app.implementations.chunker_semantic import SemanticChunker
     from app.implementations.embedder_bge_m3 import BGEM3Embedder
     from app.implementations.pdf_loader_pymupdf import PDFLoader
+    from app.implementations.tabular_loader_pandas import TabularLoader
     from app.implementations.qdrant_store import QdrantStore
     from app.implementations.retriever_hybrid import HybridRetriever
 
-    # 1. PDF-Loader – keine Abhängigkeiten
-    loader: DocumentLoader = PDFLoader()
+    # 1. Universal-Loader (Routet automatisch zwischen PDF und Tabellen)
+    pdf_loader = PDFLoader()
+    tabular_loader = TabularLoader()
+    loader: DocumentLoader = UniversalLoader(pdf_loader=pdf_loader, tabular_loader=tabular_loader)
 
     # 2. Embedder – EINZIGE Instanz für Chunker und Retriever (~10s Ladezeit bei Start)
     embedder: Embedder
@@ -88,6 +107,11 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
 
     # 3. Chunker – SemanticChunker braucht den Embedder für Kosinusähnlichkeit
     chunker: Chunker
+    
+    # --- HIER IST UNSER HACK: Wir zwingen das System auf den reparierten Tabellen-Chunker ---
+    config.chunker.implementation = "recursive"
+    # ------------------------------------------------------------------------------------------
+
     if config.chunker.implementation == "semantic":
         chunker = SemanticChunker(
             embedder=embedder,  # geteilte Instanz!
