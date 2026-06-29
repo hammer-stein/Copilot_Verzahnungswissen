@@ -18,19 +18,22 @@ ist damit nie schlechter als zuvor. Vollständig zustandslos (kein Konversations
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
 from app.core.types import AgentStep, Answer, ReviewSummary, RetrievedChunk
 from app.implementations.answer_generator_ollama import (
     OllamaAnswerGenerator,
     build_chunks_block_and_sources,
     cad_to_prompt_context,
+    maybe_answer_cad_identity_question,
     resolve_format_instruction,
 )
 from app.pipeline.agents.reviewer import ReviewerAgent, ReviewResult
 from app.pipeline.agents.solver import SolverAgent
 
 logger = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[str], None]
 
 
 class MultiAgentAnswerGenerator:
@@ -68,6 +71,7 @@ class MultiAgentAnswerGenerator:
         chunks: list[RetrievedChunk],
         cad_metadata: dict,
         answer_format: Optional[str] = None,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> Answer:
         """
         Führt den Multi-Agenten-Fluss aus und gibt eine Answer mit nachvollziehbarem
@@ -81,13 +85,39 @@ class MultiAgentAnswerGenerator:
 
             trace: list[AgentStep] = [self._orchestrator_step(sources)]
 
+            fast_answer = maybe_answer_cad_identity_question(question, cad_metadata)
+            if fast_answer:
+                if progress_callback:
+                    progress_callback("answer_generation_start")
+                    progress_callback("answer_generation_done")
+                    progress_callback("validation_skipped")
+                    progress_callback("improvement_skipped")
+                trace.append({
+                    "agent": "solver",
+                    "title": "CAD-Identifikation",
+                    "content": "Der Zahnradtyp wurde direkt aus dem CAD-Feld gear_type bestimmt.",
+                    "status": "ok",
+                })
+                return {
+                    "question": question,
+                    "answer_text": fast_answer,
+                    "sources": sources,
+                    "agent_trace": trace,
+                }
+
             # 1) Solver: Lösungsentwurf + offengelegter Lösungsweg (LLM-Call 1)
-            solution = self.solver.solve(
-                question=question,
-                cad_block=cad_block,
-                chunks_block=chunks_block,
-                format_instruction=format_instruction,
-            )
+            if progress_callback:
+                progress_callback("answer_generation_start")
+            try:
+                solution = self.solver.solve(
+                    question=question,
+                    cad_block=cad_block,
+                    chunks_block=chunks_block,
+                    format_instruction=format_instruction,
+                )
+            finally:
+                if progress_callback:
+                    progress_callback("answer_generation_done")
             trace.extend(self._solver_steps(solution.steps))
 
             final_answer = solution.answer
@@ -95,6 +125,8 @@ class MultiAgentAnswerGenerator:
 
             # 2) Reviewer: Prüfung + ggf. Korrektur/Revision (LLM-Call 2, optional 3)
             if self.enable_review:
+                if progress_callback:
+                    progress_callback("validation_start")
                 review = self._safe_review(
                     question=question,
                     cad_block=cad_block,
@@ -102,7 +134,11 @@ class MultiAgentAnswerGenerator:
                     draft_answer=final_answer,
                     format_instruction=format_instruction,
                 )
+                if progress_callback:
+                    progress_callback("validation_done")
                 if review is None:
+                    if progress_callback:
+                        progress_callback("improvement_skipped")
                     trace.append({
                         "agent": "reviewer",
                         "title": "Plausibilitätsprüfung",
@@ -117,8 +153,13 @@ class MultiAgentAnswerGenerator:
                         cad_block=cad_block,
                         chunks_block=chunks_block,
                         format_instruction=format_instruction,
+                        progress_callback=progress_callback,
                     )
                     trace.extend(review_steps)
+            else:
+                if progress_callback:
+                    progress_callback("validation_skipped")
+                    progress_callback("improvement_skipped")
 
             # 3) Orchestrator-Assembly: finale, prüfbare Answer
             answer: Answer = {
@@ -138,16 +179,16 @@ class MultiAgentAnswerGenerator:
                 chunks=chunks,
                 cad_metadata=cad_metadata,
                 answer_format=answer_format,
+                progress_callback=progress_callback,
             )
 
     # ----------------------------------------------------------------- helpers
 
     def _orchestrator_step(self, sources: list) -> AgentStep:
-        """Macht die Recherche-/Delegationsentscheidung des Orchestrators transparent."""
+        """Macht die Recherche-/Delegationsentscheidung des Orchestrators transparent (ohne Quellenliste)."""
         if sources:
-            titles = ", ".join(dict.fromkeys(s["title"] for s in sources))  # eindeutig, Reihenfolge erhalten
             content = (
-                f"{len(sources)} relevante Wissensauszüge gefunden (Quellen: {titles}). "
+                f"{len(sources)} relevante Wissensauszüge gefunden. "
                 "Frage und Kontext an den Lösungs-Agenten delegiert."
             )
         else:
@@ -201,6 +242,7 @@ class MultiAgentAnswerGenerator:
         cad_block: str,
         chunks_block: str,
         format_instruction: str,
+        progress_callback: Optional[ProgressCallback],
     ) -> tuple[str, ReviewSummary, list[AgentStep]]:
         """
         Wendet das Prüfurteil an und liefert (finale_antwort, review_summary, trace_schritte).
@@ -217,6 +259,8 @@ class MultiAgentAnswerGenerator:
             summary["issues"] = review.issues
 
         if review.approved:
+            if progress_callback:
+                progress_callback("improvement_skipped")
             step: AgentStep = {
                 "agent": "reviewer",
                 "title": "Plausibilitätsprüfung",
@@ -237,6 +281,8 @@ class MultiAgentAnswerGenerator:
         }]
 
         if review.corrected_answer:
+            if progress_callback:
+                progress_callback("improvement_done")
             steps.append({
                 "agent": "reviewer",
                 "title": "Korrigierte Antwort",
@@ -247,6 +293,8 @@ class MultiAgentAnswerGenerator:
 
         if self.max_revisions > 0:
             try:
+                if progress_callback:
+                    progress_callback("improvement_start")
                 revised = self.solver.revise(
                     question=question,
                     cad_block=cad_block,
@@ -261,11 +309,15 @@ class MultiAgentAnswerGenerator:
                     "status": "korrigiert",
                 })
                 summary["status"] = "korrigiert"
+                if progress_callback:
+                    progress_callback("improvement_done")
                 return revised.answer, summary, steps
             except Exception:
                 logger.warning("revision_failed; Entwurf bleibt unverändert", exc_info=True)
 
         # Keine Korrektur möglich – Entwurf unverändert, aber klar gekennzeichnet
+        if progress_callback:
+            progress_callback("improvement_skipped")
         steps.append({
             "agent": "reviewer",
             "title": "Hinweis",
@@ -281,6 +333,7 @@ class MultiAgentAnswerGenerator:
         chunks: list[RetrievedChunk],
         cad_metadata: dict,
         answer_format: Optional[str],
+        progress_callback: Optional[ProgressCallback],
     ) -> Answer:
         """Single-Pass-Antwort des bewährten Generators, mit einem Fallback-Hinweis im agent_trace."""
         answer = dict(self.fallback_generator.generate(
@@ -288,6 +341,7 @@ class MultiAgentAnswerGenerator:
             chunks=chunks,
             cad_metadata=cad_metadata,
             answer_format=answer_format,
+            progress_callback=progress_callback,
         ))
         answer["agent_trace"] = [{
             "agent": "orchestrator",

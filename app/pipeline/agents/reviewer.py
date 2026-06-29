@@ -2,15 +2,16 @@
 reviewer.py – Review-Agent des Multi-Agenten-Flows.
 
 Prüft den Lösungsentwurf des Solvers kritisch gegen Bauteildaten und Wissensauszüge:
-Quellendeckung, Quellentreue und technische Plausibilität. Liefert ein Urteil
-({"status", "findings", "issues", "corrected_answer"}) und – bei Bedarf – eine korrigierte Antwort.
+Quellendeckung, Quellentreue und technische Plausibilität. Liefert ein label-basiertes Urteil
+(URTEIL/BEFUND/MAENGEL/KORREKTUR) und – bei Bedarf – eine korrigierte Antwort. Kein JSON,
+damit kleine Modelle das Format zuverlässig einhalten.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.pipeline.agents.base import LlmAgent, as_str, as_str_list
+from app.pipeline.agents.base import LlmAgent, as_str, parse_bullets, parse_labeled_sections
 
 # Erlaubte Urteile. Kleine Modelle weichen oft ab ("ok", "approved", "needs revision"),
 # daher wird der gelieferte Status unten heuristisch auf diese drei Werte abgebildet.
@@ -59,23 +60,22 @@ class ReviewerAgent(LlmAgent):
         format_instruction: str,
     ) -> ReviewResult:
         """
-        Ruft das LLM mit dem Reviewer-Prompt auf und normalisiert die JSON-Antwort zu ReviewResult.
-        Wirft ValueError bei nicht verwertbarem JSON – der Aufrufer entscheidet über die Behandlung.
+        Ruft das LLM mit dem Reviewer-Prompt auf und parst die label-basierte Antwort zu ReviewResult.
+        Das Parsen ist tolerant: fehlende Abschnitte → leere Felder, unbekannter Status → "unsicher".
+        Der Reviewer wirft damit praktisch nie – ein unsicheres Urteil lässt den Solver-Entwurf
+        unverändert (der Aufrufer behandelt das über _safe_review).
         """
-        raw = self._generate_json(
+        text = self._generate_text(
             CAD_METADATA_JSON=cad_block,
             CHUNKS_BLOCK=chunks_block,
             QUESTION=question,
             DRAFT_ANSWER=draft_answer,
             FORMAT=format_instruction,
         )
-        if not isinstance(raw, dict):
-            raise ValueError(f"Reviewer lieferte kein JSON-Objekt: {type(raw).__name__}")
-
-        status = normalize_status(raw.get("status", ""))
+        sections = parse_labeled_sections(text, ["URTEIL", "BEFUND", "MAENGEL", "KORREKTUR"])
         return ReviewResult(
-            status=status,
-            findings=as_str(raw.get("findings")),
-            issues=as_str_list(raw.get("issues")),
-            corrected_answer=as_str(raw.get("corrected_answer")),
+            status=normalize_status(sections["URTEIL"]),
+            findings=as_str(sections["BEFUND"]),
+            issues=parse_bullets(sections["MAENGEL"]),
+            corrected_answer=as_str(sections["KORREKTUR"]),
         )

@@ -41,6 +41,10 @@ function SourcesAccordion({ sources }) {
 /* Maps an agent-step status to a short German badge label. null = no badge (neutral "ok"). */
 const STEP_STATUS_LABELS = {
   ok: null,
+  pending: null,
+  running: 'läuft',
+  done: 'fertig',
+  skipped: 'übersprungen',
   warnung: 'Hinweis',
   korrigiert: 'korrigiert',
   freigegeben: 'freigegeben',
@@ -103,10 +107,40 @@ function Answer({ title, children, sources, steps, review }) {
   );
 }
 
-function ChatView({ messages, generating }) {
+function ProcessSteps({ steps }) {
   const { Spinner } = window.VerzahnungsCopilotDesignSystem_c9990b;
+  const list = (steps && steps.length) ? steps : [{
+    label: 'Antwortgenerierung',
+    icon: 'sparkles',
+    title: 'Antwort vorbereiten',
+    content: 'Pipeline wird gestartet.',
+    status: 'running',
+  }];
+  return (
+    <div className="vc-process">
+      {list.map((s, i) => {
+        const isRunning = s.status === 'running';
+        const isDone = s.status === 'done' || s.status === 'freigegeben' || s.status === 'korrigiert';
+        const isSkipped = s.status === 'skipped';
+        return (
+          <div key={i} className={'vc-process__row vc-process__row--' + (s.status || 'pending')}>
+            <span className="vc-process__state">
+              {isRunning ? <Spinner /> : <Icon name={isDone ? 'check' : (isSkipped ? 'minus' : 'circle')} size={13} />}
+            </span>
+            <span className="vc-process__main">
+              <span className="vc-process__title">{s.title || s.label}</span>
+              <span className="vc-process__content">{s.content || ''}</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChatView({ messages, generating, processSteps }) {
   const endRef = React.useRef(null);
-  React.useEffect(() => { if (endRef.current) endRef.current.parentNode.scrollTop = endRef.current.offsetTop; }, [messages.length, generating]);
+  React.useEffect(() => { if (endRef.current) endRef.current.parentNode.scrollTop = endRef.current.offsetTop; }, [messages.length, generating, processSteps && processSteps.length]);
 
   return (
     <div className="vc-chat">
@@ -119,7 +153,7 @@ function ChatView({ messages, generating }) {
         {generating && (
           <div className="vc-msg vc-msg--ai">
             <div className="vc-msg__avatar vc-msg__avatar--ai"><Icon name="cog" size={17} /></div>
-            <div className="vc-generating"><Spinner /> Antwort wird aus den Quellen generiert…</div>
+            <div className="vc-generating"><ProcessSteps steps={processSteps} /></div>
           </div>
         )}
         <div ref={endRef} />
@@ -127,4 +161,4 @@ function ChatView({ messages, generating }) {
     </div>
   );
 }
-Object.assign(window, { ChatView, Answer, UserMessage, AssistantMessage, ReasoningAccordion });
+Object.assign(window, { ChatView, Answer, UserMessage, AssistantMessage, ReasoningAccordion, ProcessSteps });

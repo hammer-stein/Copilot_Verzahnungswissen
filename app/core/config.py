@@ -48,9 +48,10 @@ class CADAdapterConfig(BaseModel):
     """
     Wählt die CAD-Datenquelle (Schalter synthetisch/echt):
     "synthetic_json"     = liest die synthetischen Testdatensätze aus synthetic_data_dir
+    "cad_processor_local" = ruft cad_processor/src/step_parser.py direkt im Port-8000-Prozess auf
     "cad_processor_http" = sendet STEP-Dateien an den cad_processor-Service (Port 8001)
     """
-    implementation: Literal["synthetic_json", "cad_processor_http"]
+    implementation: Literal["synthetic_json", "cad_processor_local", "cad_processor_http"]
     url: str = "http://localhost:8001"
     timeout_s: int = 120
     synthetic_data_dir: str = "test_verzahnung/cad_testdaten"

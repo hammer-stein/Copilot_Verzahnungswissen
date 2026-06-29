@@ -1,360 +1,317 @@
 # KI-Copilot für Verzahnungswissen
 
-Modulares RAG-System für Verzahnungswissen mit optionaler CAD-Anbindung.
+Ein lokales RAG-System für Verzahnungswissen mit integrierter STEP-Analyse. Web-GUI, API, Dokumentenbibliothek, Fragebeantwortung und CAD-Analyse laufen in einem Python-Prozess auf Port `8000`.
 
 ```text
-PDFs                 → RAG-Wissensbasis in Qdrant
-STEP/STP-Datei       → cad_processor → GearParameters JSON
-Nutzerfrage + CAD    → Retrieval aus PDFs → Solver/Reviewer-LLM → Antwort + Lösungsweg + Quellen
+PDFs              -> Wissensbasis / Qdrant
+STEP/STP          -> cad_processor_local -> GearParameters JSON
+Frage + CAD JSON  -> BAAI/bge-m3 Embedding -> Kosinus-Suche -> Solver/Reviewer-LLM -> Antwort
 ```
 
-## Systemüberblick
+## Zielbetrieb
 
-Das Projekt besteht aus drei laufenden Komponenten:
+| Komponente | Adresse | Zweck |
+|---|---|---|
+| Copilot-App | `http://localhost:8000/` | Web-GUI, API, PDF-Upload, STEP-Analyse, Antworten |
+| Qdrant | `localhost:6333` oder `storage/qdrant` | Vektordatenbank |
+| Ollama | `localhost:11434` | LLM-Inferenz |
 
-| Komponente | Port | Aufgabe |
-|---|---:|---|
-| `app` | `8000` | RAG-Backend, Web-GUI, PDF-Upload, Fragen beantworten |
-| `cad_processor` | `8001` | STEP/STP-Dateien analysieren und GearParameters-JSON erzeugen |
-| `qdrant` | `6333` | Vektordatenbank für PDF-Chunks |
+Der CAD-Prozessor läuft standardmäßig **nicht** mehr als eigener Webservice auf Port `8001`. Er wird direkt im App-Prozess geladen (`cad_adapter.implementation: "cad_processor_local"`).
 
-Ollama läuft separat auf dem Host-Rechner und stellt das Antwortmodell bereit.
-
-### Aktueller Anfragefluss
+Für einen externen Server ist der empfohlene Zielzustand:
 
 ```text
-1. Nutzerfrage wird mit BGE-M3 embedded.
-2. HybridRetriever sucht passende PDF-Chunks in Qdrant.
-3. Der Antwortgenerator bekommt:
-   - ursprüngliche Nutzerfrage
-   - gefundene Chunks
-   - vollständiges CAD-JSON
-   - gewünschtes Ausgabeformat
-4. Antwortgenerierung je nach answer_generator.implementation (config.yaml):
-   - "multi_agent" (Standard): Orchestrator (Code) → Solver (LLM) → Reviewer (LLM).
-     Der Solver entwirft eine quellenbelegte Antwort, der Reviewer prüft sie auf
-     Quellendeckung und Plausibilität (optional eine Revision). Der nachvollziehbare
-     Lösungsweg wird als agent_trace + review zurückgegeben.
-   - "llama_ollama": klassischer Single-Pass (genau ein LLM-Aufruf, kein agent_trace).
-5. Ollama erzeugt die Antwort mit Quellenmarkierungen [Q1], [Q2], ... ([CAD] für Bauteildaten).
+1 Serverprozess auf Port 8000
+1 lokaler Ollama-Dienst auf 127.0.0.1:11434
+Qdrant entweder eingebettet unter storage/qdrant oder als separater Qdrant-Dienst
+Persistente Projektdaten unter storage/
 ```
 
-Wichtig:
-- Das CAD-JSON wird **nicht** in das Retrieval eingebettet und nicht als Filter verwendet. Es wird erst in der Antwortstufe als Bauteilkontext genutzt.
-- Der Multi-Agenten-Fluss fällt bei jedem Fehler (LLM-Fehler, ungültiges JSON) automatisch auf den bewährten Single-Pass zurück – die Antwortqualität ist nie schlechter als zuvor.
+## Einmalige Installation
 
----
-
-## Schnellstart Mit Docker Compose
-
-Empfohlener Weg, wenn du das komplette System mit echter STEP-Analyse starten willst.
-
-### Voraussetzungen
-
-- Docker Desktop läuft
-- Ollama ist installiert und läuft auf deinem Rechner
-
-### Start
+### 1. Repository vorbereiten
 
 ```bash
-# 1. In den Projektordner wechseln
-cd "/Users/maxhammerstein/Projects/KI-Copilot für Verzahnungswissen"
-
-# 2. Ollama-Modell einmalig laden
-ollama pull llama3.2:3b
-
-# 3. Konfiguration anlegen, falls noch nicht vorhanden
+cd "/pfad/zum/KI-Copilot für Verzahnungswissen" # z.B. cd "/Users/maxhammerstein/Projects/KI-Copilot für Verzahnungswissen"
 cp config.example.yaml config.yaml
-
-# 4. Alle Services bauen und starten
-docker compose up --build
 ```
 
-Danach öffnest du:
+### 2. Conda-Umgebung erstellen
 
-```text
-http://localhost:8000/
+Dieser Schritt bündelt RAG-Abhängigkeiten und `pythonocc-core` für die STEP-Analyse in einer Umgebung.
+
+```bash
+conda env create -f cad_processor/environment.yml
+conda activate gear-copilot
+python -m pip install -r requirements.txt
 ```
 
-Beim ersten Start kann das `app`-Backend zusätzlich das Embedding-Modell `BAAI/bge-m3` herunterladen. Das kann einige Minuten dauern. Der Hugging-Face-Cache wird im Docker-Volume `hf_cache` gespeichert und bleibt für spätere Starts erhalten.
-
-### Was Docker Compose automatisch umstellt
-
-In `docker-compose.yml` werden diese Umgebungsvariablen gesetzt:
-
-```text
-QDRANT_HOST=qdrant
-CAD_PROCESSOR_URL=http://cad_processor:8001
-OLLAMA_URL=http://host.docker.internal:11434
-```
-
-Dadurch wird deine lokale `config.yaml` im Container automatisch auf Compose-Betrieb umgestellt:
-
-- Qdrant läuft als Docker-Service.
-- STEP-Dateien werden an den echten `cad_processor` geschickt.
-- Ollama wird vom Host-Rechner aus genutzt.
-
----
-
-## Lokaler Start Ohne Komplettes Docker
-
-Dieser Weg ist sinnvoll für Entwicklung am RAG-Backend. Qdrant kann trotzdem per Docker laufen.
-
-### 1. Ollama vorbereiten
+### 3. Ollama-Modell laden
 
 ```bash
 ollama pull llama3.2:3b
 ```
 
-### 2. Python-Umgebung für das RAG-System erstellen
+Falls Ollama nicht bereits als Dienst läuft, `ollama serve` in einem separaten Terminal, `screen`/`tmux` oder als Systemdienst starten.
 
-```bash
-cd "/Users/maxhammerstein/Projects/KI-Copilot für Verzahnungswissen"
+### 4. Qdrant wählen
 
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+Für einen Docker-unabhängigen Server ist der eingebettete On-Disk-Modus am einfachsten. Dafür in `config.yaml` setzen:
+
+```yaml
+vector_store:
+  implementation: "qdrant"
+  path: "storage/qdrant"
+  collection_name: "knowledge_base"
 ```
 
-Python 3.11 ist empfohlen. Die Pins in `requirements.txt` sind auf den 3.11-Stack abgestimmt.
+Wichtig: Wenn vorher ein Docker-Qdrant genutzt wurde, liegen die vorhandenen Vektoren nicht automatisch in `storage/qdrant`. Dann entweder die PDFs neu hochladen/neu indexieren oder Qdrant-Daten gezielt migrieren.
 
-### 3. Konfiguration anlegen
-
-```bash
-cp config.example.yaml config.yaml
-```
-
-Die Standardkonfiguration nutzt:
-
-- `cad_adapter.implementation: "synthetic_json"`
-- Qdrant über `localhost:6333`
-- Ollama über `localhost:11434`
-
-### 4. Qdrant starten
+Alternativ kann ein Qdrant-Server laufen:
 
 ```bash
 docker compose up -d qdrant
 ```
 
-### 5. RAG-Backend starten
+Dann bleibt in `config.yaml` `path` leer und `host: "localhost"`, `port: 6333`.
+
+## Start
 
 ```bash
-uvicorn app.api.main:app --reload --port 8000
+conda activate gear-copilot
+./scripts/start_local.sh
 ```
 
-Dann öffnen:
+Danach öffnen:
 
 ```text
 http://localhost:8000/
 ```
 
-### Optional: komplett ohne Qdrant-Docker
-
-Wenn du keinen Qdrant-Container nutzen willst, setze in `config.yaml` unter `vector_store`:
-
-```yaml
-path: "storage/qdrant"
-```
-
-Dann läuft Qdrant eingebettet im lokalen On-Disk-Modus. In diesem Modus brauchst du nur noch Ollama als externen Dienst.
-
----
-
-## Echte STEP-Analyse Lokal Starten
-
-Für echte CAD-Auswertung ohne Docker Compose muss zusätzlich der CAD-Prozessor lokal laufen.
-
-### 1. CAD-Processor-Umgebung erstellen
+`scripts/start_local.sh` beendet alte `uvicorn app.api.main`- und `uvicorn src.main`-Prozesse und startet genau einen App-Prozess auf Port `8000`. Für Entwicklung mit Auto-Reload:
 
 ```bash
-cd "/Users/maxhammerstein/Projects/KI-Copilot für Verzahnungswissen"
-conda env create -f cad_processor/environment.yml
-conda activate gear-copilot
+GEAR_COPILOT_RELOAD=1 ./scripts/start_local.sh
 ```
 
-### 2. CAD-Processor starten
+## Laufender Anfrageprozess
 
-```bash
-cd cad_processor
-uvicorn src.main:app --reload --port 8001
-```
+Während eine Frage bearbeitet wird, zeigt das Web-GUI den aktuellen Ablauf an und hält abgeschlossene Schritte sichtbar:
 
-### 3. RAG-Konfiguration umstellen
+1. `Embedding` via `BAAI/bge-m3`
+2. `Chunk-Suche` via Kosinus-Ähnlichkeit
+3. `Antwortgenerierung` via `llama3.1:8b`
+4. `Validierung` via `llama3.1:8b`
+5. `Verbesserung` via `llama3.1:8b`, falls der Reviewer Mängel findet
 
-In der Root-`config.yaml`:
+Nach Abschluss steht dieselbe Spur unter **Lösungsweg & Prüfung**. Ändert sich das LLM oder das Embedding-Modell in `config.yaml`, übernimmt die Anzeige die neuen Modellnamen beim nächsten Serverstart.
 
-```yaml
-cad_adapter:
-  implementation: "cad_processor_http"
-  url: "http://localhost:8001"
-```
+## Nutzung
 
-Dann das RAG-Backend wie oben starten:
+1. `http://localhost:8000/` öffnen.
+2. Über **Wissensbasis** PDFs hochladen, Ordner anlegen und Dokumente organisieren.
+3. Optional ganze Ordner hochladen; PDF-Dateien werden inklusive Unterordnerstruktur übernommen.
+4. STEP/STP-Datei hochladen. Die App analysiert sie direkt über `cad_processor_local`.
+5. Fragen stellen. CAD-Fakten werden mit `[CAD]`, Dokumentquellen mit `[Q1]`, `[Q2]` markiert.
 
-```bash
-uvicorn app.api.main:app --reload --port 8000
-```
+Fragen zum aktuell geladenen Bauteil, etwa „Um welches Zahnrad handelt es sich?“, werden bevorzugt aus dem CAD-JSON beantwortet. Wenn CAD-Daten und Wissensbasis keine Antwort enthalten, muss das Modell dies eindeutig ausgeben.
 
-Vollständige CAD-Setup-Anleitung: [`cad_processor/SETUP_ANLEITUNG.md`](cad_processor/SETUP_ANLEITUNG.md)
+## Was Nach Änderungen Neu Ausgeführt Werden Muss
 
----
-
-## Nutzung Im Web-GUI
-
-1. Öffne `http://localhost:8000/`.
-2. Verwalte die Wissensbasis über die Schaltfläche **„Wissensbasis"** in der Seitenleiste
-   (öffnet ein Verwaltungsfenster): PDFs hochladen, Dokumente löschen, **Ordner anlegen**
-   und Dokumente per Auswahlfeld zwischen Ordnern **verschieben**. Ordner dienen nur der
-   Organisation und schränken das Retrieval nicht ein.
-3. Warte, bis die Dokumente indexiert sind.
-4. Lade als aktives Bauteil eine **STEP/STP-Datei** oder eine **GearParameters-JSON**
-   (z. B. die Test-Datensätze `test_verzahnung/cad_testdaten/gear_*.json`) hoch, oder nutze
-   die synthetischen CAD-Beispiele. JSON wird im Browser geparst und direkt als Bauteil gesetzt.
-5. Stelle eine oder mehrere Fragen.
-6. Wähle optional das Ausgabeformat:
-   - `kurz`
-   - `standard`
-   - `ausführlich`
-   - `stichpunkte`
-   - `tabellarisch`
-
-Ohne hochgeladene PDFs kann das System keine fachlich belegten Antworten aus Quellen erzeugen.
-
----
-
-## CAD-Datenquellen
-
-In `config.yaml` steuert `cad_adapter.implementation`, woher die CAD-Daten kommen:
-
-| Wert | Verhalten |
+| Änderung | Erforderlicher Schritt |
 |---|---|
-| `synthetic_json` | Nutzt synthetische GearParameters-Testdaten aus `test_verzahnung/cad_testdaten/` |
-| `cad_processor_http` | Sendet STEP/STP-Dateien an den CAD-Prozessor auf Port `8001` |
+| Prompt-Dateien, Frontend, Python-Code | Server neu starten: `./scripts/start_local.sh` |
+| `answer_generator.model_name` | Modell mit `ollama pull ...` laden, Server neu starten |
+| `embedder.model_name`, `embedder.use_sparse`, Chunking-Parameter | PDFs neu indexieren |
+| `cad_adapter.implementation` | Server neu starten |
+| `vector_store.path`, `collection_name` | Wissensbasis neu aufbauen oder Qdrant-Daten migrieren |
 
-Die Endpunkte `/cad/random` und `/cad/examples` nutzen immer die synthetischen Testdaten. Sie sind für Demo und Tests gedacht.
+## Paketierung Für Einen Anderen Server
 
-Die synthetischen Datensätze können neu erzeugt werden mit:
+### 1. Vor Dem Kopieren Entscheiden: Daten Mitnehmen Oder Neu Aufbauen
 
-```bash
-python test_verzahnung/cad_testdaten/generate_testdata.py
-```
+Die Wissensbasis besteht aus mehreren Teilen:
 
----
-
-## API-Endpunkte
-
-### RAG-System (`localhost:8000`)
-
-| Methode | Pfad | Beschreibung |
+| Pfad/Ort | Inhalt | Muss mit, wenn Daten erhalten bleiben sollen? |
 |---|---|---|
-| `GET` | `/` | Leitet auf das Web-GUI weiter |
-| `POST` | `/upload` | PDF hochladen und indexieren (optionaler Form-Parameter `folder`) |
-| `GET` | `/documents` | Indexierte Dokumente auflisten (inkl. `file_name`, `folder`) |
-| `DELETE` | `/documents/{doc_hash}` | Dokument löschen |
-| `POST` | `/documents/{doc_hash}/move` | Dokument in einen Ordner verschieben (`{ "folder": "…" }`, `""` = kein Ordner) |
-| `GET` | `/folders` | Ordner auflisten (registrierte + von Dokumenten genutzte) |
-| `POST` | `/folders` | Ordner anlegen (`{ "name": "…" }`) |
-| `DELETE` | `/folders/{name}` | Ordner löschen (Dokumente bleiben erhalten, gehen auf „kein Ordner“) |
-| `POST` | `/cad/analyze` | STEP/STP-Datei analysieren oder synthetischen CAD-Datensatz liefern |
-| `GET` | `/cad/random` | Zufälligen synthetischen CAD-Datensatz laden |
-| `GET` | `/cad/examples` | Synthetische CAD-Beispiele auflisten |
-| `GET` | `/cad/examples/{name}` | Bestimmtes CAD-Beispiel laden |
-| `POST` | `/ask` | Fragen beantworten |
+| `storage/uploads/` | Original-PDFs | ja |
+| `storage/folders.json` | Ordnerstruktur | ja |
+| `storage/cad_previews/` | gerenderte STEP/STL-Vorschauen | optional |
+| `storage/qdrant/` | Vektoren bei eingebettetem Qdrant | ja, falls `vector_store.path` genutzt wird |
+| Docker-Volume `*_qdrant_data` | Vektoren bei Docker-Qdrant | ja, falls Docker-Qdrant weitergenutzt wird |
+| `config.yaml` | lokale Modell-/Serverkonfiguration | ja |
+| `logs/` | Query-Logs | optional |
 
-Beispiel für `/ask`:
+Wenn der Zielserver mit sauberer Wissensbasis starten soll, reicht Repository + `config.yaml`; PDFs werden danach über die UI neu hochgeladen.
 
-```json
-{
-  "questions": ["Welches Fertigungsverfahren ist geeignet?"],
-  "cad_metadata": {
-    "gear_type": "helical",
-    "tooth_profile": {
-      "module_mm": 2.0,
-      "num_teeth": 25
-    }
-  },
-  "format": "standard"
-}
-```
+### 2. Projekt übertragen
 
-Antwort: `{ "cad_metadata": {...}, "answers": [ { "question", "answer_text", "sources": [...] } ] }`.
-Im Modus `multi_agent` trägt jede Antwort zusätzlich die optionalen Felder `agent_trace`
-(die geprüften Einzelschritte Orchestrator/Solver/Reviewer) und `review` (Gesamturteil) –
-das Web-GUI zeigt sie als aufklappbaren Block „Lösungsweg & Prüfung". Beide Felder sind
-optional, sodass der Single-Pass-Modus und ältere Clients unverändert funktionieren.
-
-### CAD-Prozessor (`localhost:8001`)
-
-| Methode | Pfad | Beschreibung |
-|---|---|---|
-| `POST` | `/analyze` | STEP/STP-Datei hochladen und GearParameters-JSON erhalten |
-
----
-
-## Evaluation
-
-`test_verzahnung/evaluation.ipynb` misst die Retrieval-Qualität:
-
-- PDF-Dokumente laden
-- Evaluationsfragen erzeugen oder laden
-- Chunking und Hybrid-Retrieval ausführen
-- MRR und Hit@k berechnen
-
-Die Evaluation misst die reine Retrieval-Qualität. Das CAD-JSON beeinflusst aktuell nur die Antwortgenerierung.
-
----
-
-## Projektstruktur
+Kopiere das Repository inklusive dieser Ordner, wenn Daten erhalten bleiben sollen:
 
 ```text
-Copilot_Verzahnungswissen/
-├── app/                        RAG-System
-│   ├── api/main.py             FastAPI-App auf Port 8000
-│   ├── core/                   Config, Factory, Interfaces, Types
-│   ├── implementations/        Embedder, Chunker, Retriever, CAD-Adapter, AnswerGenerator (Single-Pass + Multi-Agent)
-│   └── pipeline/               PDF-Indexierung + agents/ (Solver-/Reviewer-Agenten)
-├── cad_processor/              CAD-Prozessor
-│   ├── src/main.py             FastAPI-App auf Port 8001
-│   ├── src/step_parser.py      STEP-Datei einlesen
-│   └── src/output_schema.py    GearParameters-JSON-Struktur
-├── frontend/                   Web-GUI und Fallback-Frontend
-├── prompts/                    Prompt-Templates
-├── test_verzahnung/
-│   ├── cad_testdaten/          Synthetische CAD-JSONs
-│   └── evaluation.ipynb        Retrieval-Evaluation
-├── Dockerfile                  RAG-App-Image
-├── docker-compose.yml          Qdrant + CAD-Prozessor + RAG-App
-├── requirements.txt            Python-Abhängigkeiten für RAG-System
-├── config.example.yaml         Vorlage für lokale Konfiguration
-└── README.md
+storage/
+logs/
+config.yaml
 ```
 
----
+Wenn die Wissensbasis neu aufgebaut wird, reicht das Repository plus `config.yaml`; PDFs können danach wieder hochgeladen werden.
 
-## Häufige Probleme
+### 3. Server vorbereiten
 
-### `COPY schemas/ schemas/` schlägt beim Docker-Build fehl
+Installiere auf dem Zielserver:
 
-Der Ordner `schemas/` existiert in der aktuellen Architektur nicht mehr. Der Dockerfile darf ihn nicht kopieren.
+- Miniconda/Miniforge oder Mambaforge
+- Ollama
+- optional NVIDIA/CUDA-Treiber, falls `embedder.device: "cuda"` genutzt wird
+- Git und ein Prozessmanager wie `screen`, `tmux` oder `systemd`
 
-### `/cad/random` findet keine Testdaten
-
-Prüfe, ob `test_verzahnung/cad_testdaten/` vorhanden ist. Im Docker-Image wird dieser Ordner explizit mitkopiert.
-
-### Antworten enthalten keine Quellen
-
-Dann sind vermutlich noch keine PDFs indexiert. Lade zuerst mindestens ein PDF über das Web-GUI hoch.
-
-### Ollama ist aus Docker nicht erreichbar
-
-Prüfe, ob Ollama auf dem Host läuft:
+Dann im Projekt:
 
 ```bash
+conda env create -f cad_processor/environment.yml
+conda activate gear-copilot
+python -m pip install -r requirements.txt
+ollama pull llama3.1:8b
+```
+
+Falls Ollama nicht bereits als Dienst läuft, `ollama serve` in einem separaten Terminal, `screen`/`tmux` oder als Systemdienst starten.
+
+Prüfen:
+
+```bash
+python -c "import OCC; print('OCC ok')"
 ollama list
 ```
 
-Im Compose-Betrieb nutzt die App `http://host.docker.internal:11434`.
+### 4. Konfiguration setzen
 
-### Nach Änderung von Embedding- oder Chunking-Einstellungen sind alte Treffer schlecht
+Für robuste Übertragung ohne zusätzlichen Qdrant-Container:
 
-Dann die Dokumente neu indexieren. Alte Qdrant-Punkte wurden mit den vorherigen Einstellungen erzeugt.
+```yaml
+vector_store:
+  implementation: "qdrant"
+  path: "storage/qdrant"
+
+cad_adapter:
+  implementation: "cad_processor_local"
+
+answer_generator:
+  implementation: "multi_agent"
+  model_name: "llama3.1:8b"
+```
+
+Wenn stattdessen ein externer oder Docker-Qdrant genutzt wird:
+
+```yaml
+vector_store:
+  implementation: "qdrant"
+  host: "localhost"
+  port: 6333
+  collection_name: "knowledge_base"
+```
+
+Dann muss Qdrant vor der App laufen.
+
+### 5. Starten
+
+```bash
+./scripts/start_local.sh
+```
+
+Firewall/Reverse Proxy nur für Port `8000` öffnen. Ollama und Qdrant sollten nicht öffentlich exponiert werden.
+
+Für direkten Serverzugriff:
+
+```bash
+GEAR_COPILOT_HOST=0.0.0.0 ./scripts/start_local.sh
+```
+
+Für produktiveren Betrieb empfiehlt sich ein `systemd`-Service oder `tmux`/`screen`, damit der Prozess nach dem Schließen der SSH-Verbindung weiterläuft.
+
+Minimaler `systemd`-Startbefehl im Service wäre sinngemäß:
+
+```ini
+WorkingDirectory=/pfad/zum/KI-Copilot für Verzahnungswissen
+Environment=GEAR_COPILOT_HOST=127.0.0.1
+ExecStart=/bin/bash scripts/start_local.sh
+Restart=always
+```
+
+Bei direkter Veröffentlichung ohne Reverse Proxy `GEAR_COPILOT_HOST=0.0.0.0` setzen und Port `8000` per Firewall gezielt freigeben.
+
+### 6. Nach Dem Start Prüfen
+
+```bash
+curl http://127.0.0.1:8000/
+curl http://127.0.0.1:8000/documents
+curl http://127.0.0.1:11434/api/tags
+```
+
+Bei Qdrant-Servermodus zusätzlich:
+
+```bash
+curl http://127.0.0.1:6333/
+```
+
+Danach im Browser:
+
+```text
+http://SERVER-IP:8000/
+```
+
+Wenn `storage/qdrant` leer ist oder ein neuer Qdrant-Dienst verwendet wird, PDFs über die Wissensbasis erneut hochladen.
+
+## Docker-Entscheidung
+
+Für diesen Stand ist der empfohlene Serverweg **Conda + Startskript**, nicht vollständiges Docker Compose. Grund: `pythonocc-core` und CAD-Kernel-Abhängigkeiten sind über Conda zuverlässiger reproduzierbar als in einem generischen Python-Docker-Image.
+
+`docker-compose.yml` ist aktuell als Legacy-/Optionalpfad zu verstehen. Es enthält noch einen separaten `cad_processor`-Service auf Port `8001`; der empfohlene Standard ist dagegen `cad_processor_local` im Port-`8000`-App-Prozess.
+
+Docker bleibt sinnvoll für einen separaten Qdrant-Server. Wenn Docker komplett vermieden werden soll, `vector_store.path: "storage/qdrant"` setzen und die Wissensbasis dort neu aufbauen oder migrieren.
+
+## Browser-Abhängigkeiten
+
+Das Frontend lädt React, Babel, Lucide und Three.js aktuell über CDN (`unpkg.com`). Für normale Server mit Internetzugang ist das ausreichend. Für ein vollständig isoliertes Rechenzentrum müssen diese JavaScript-Dateien lokal vendort und in `frontend/design-system/ui_kits/copilot/index.html` auf lokale Pfade umgestellt werden.
+
+## API
+
+| Methode | Pfad | Beschreibung |
+|---|---|---|
+| `GET` | `/` | Web-GUI |
+| `POST` | `/upload` | PDF hochladen und indexieren |
+| `GET` | `/documents` | Dokumente inkl. Titel, Ordner, Chunk-Anzahl |
+| `POST` | `/folders` | Ordner anlegen |
+| `POST` | `/cad/analyze` | STEP/STP analysieren |
+| `GET` | `/cad/preview/{name}.stl` | gerendertes STEP-Preview-Mesh |
+| `POST` | `/ask` | Fragen beantworten |
+| `GET` | `/ask/status/{request_id}` | Live-Prozessstatus einer Anfrage |
+
+## Fehlerbehebung
+
+### Weiße Seite nach STEP-Analyse
+
+Browser hart neu laden. Falls es weiter passiert, Serverlog prüfen und sicherstellen, dass die aktuelle UI ausgeliefert wird:
+
+```bash
+./scripts/start_local.sh
+```
+
+### `CAD analysis failed`
+
+Prüfen, ob die App im Conda-Env läuft:
+
+```bash
+conda activate gear-copilot
+python -c "import OCC; print('OCC ok')"
+```
+
+### Antwortmodell nicht gefunden
+
+```bash
+ollama list
+ollama pull llama3.1:8b
+```
+
+### Quellen fehlen
+
+Es sind vermutlich noch keine PDFs indexiert oder der Retrieval-Threshold ist zu hoch. Dokumente hochladen oder in `config.yaml` `retriever.min_similarity` vorsichtig senken.

@@ -24,7 +24,7 @@ embedder:
   implementation: "bge_m3"
   model_name: "BAAI/bge-m3"
   device: "cpu"          # ÄNDERUNG: "cpu" | "cuda" | "mps"
-  use_sparse: true
+  use_sparse: false      # ÄNDERUNG: true nur bei aktivem Hybrid-Retrieval; danach Dokumente neu indexieren
   max_length: 8192
 
 # =============================================================================
@@ -45,13 +45,15 @@ chunker:
 # =============================================================================
 # "synthetic_json"     = /cad/analyze liefert synthetische Testdatensätze aus
 #                        synthetic_data_dir (kein cad_processor-Service nötig)
+# "cad_processor_local" = /cad/analyze ruft den cad_processor direkt im Port-8000-Prozess auf
+#                        (kein Port 8001; Server muss im conda-Env gear-copilot laufen)
 # "cad_processor_http" = STEP-Dateien werden an den cad_processor (Port 8001)
 #                        geschickt und echt analysiert
 # /cad/random und /cad/examples nutzen immer die synthetischen Datensätze.
 # =============================================================================
 
 cad_adapter:
-  implementation: "synthetic_json"   # ÄNDERUNG: "cad_processor_http" für echte STEP-Analyse
+  implementation: "cad_processor_local"   # ÄNDERUNG: "synthetic_json" für Demo oder "cad_processor_http" für separaten CAD-Service
   url: "http://localhost:8001"
   timeout_s: 120
   synthetic_data_dir: "test_verzahnung/cad_testdaten"
@@ -59,15 +61,13 @@ cad_adapter:
 # =============================================================================
 # VEKTORDATENBANK – Qdrant
 # =============================================================================
-# Qdrant muss als Docker-Container laufen (siehe docker-compose.yml):
-#   docker compose up -d
+# Standard: eingebetteter On-Disk-Modus ohne zusätzlichen Qdrant-Server.
+# Für einen externen Qdrant-Server `path` auskommentieren und host/port setzen.
 # =============================================================================
 
 vector_store:
   implementation: "qdrant"
-  # path: "storage/qdrant"  # auskommentiert lassen für Server-Modus (Docker/Compose).
-  #                          # Gesetzt = eingebetteter On-Disk-Modus ohne Docker/Server (lokale Entwicklung).
-  #                          # Im Compose-Netz schaltet QDRANT_HOST automatisch auf den Server-Modus zurück.
+  path: "storage/qdrant"
   host: "localhost"
   port: 6333
   collection_name: "knowledge_base"  # ÄNDERUNG: Domänen-spezifischer Name empfohlen
@@ -86,10 +86,10 @@ vector_store:
 retriever:
   top_k: 5
   min_similarity: 0.5   # ÄNDERUNG: 0.40–0.75 je nach Domäne und Treffer-Qualität
-  use_hybrid: true
-  hybrid_dense_weight: 0.7
-  hybrid_sparse_weight: 0.3
-  candidate_multiplier: 8
+  use_hybrid: false
+  hybrid_dense_weight: 1
+  hybrid_sparse_weight: 0
+  candidate_multiplier: 1
 
 # =============================================================================
 # ANTWORTGENERATOR – LLM-basierte Antwortgenerierung
@@ -108,9 +108,9 @@ retriever:
 
 answer_generator:
   implementation: "multi_agent"   # ÄNDERUNG: "llama_ollama" für klassischen Single-Pass
-  model_name: "llama3.2:3b"     # ÄNDERUNG: verfügbares Modell (ollama list)
+  model_name: "llama3.1:8b"     # 8B-Modell; llama3.2:8b existiert in Ollama nicht
   ollama_url: "http://localhost:11434"
-  timeout_s: 120
+  timeout_s: 180
   max_tokens: 800
   temperature: 0.2
   # --- nur für implementation: "multi_agent" ---

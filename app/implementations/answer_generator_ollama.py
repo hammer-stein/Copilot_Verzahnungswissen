@@ -11,11 +11,13 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from app.core.types import Answer, AnswerSource, RetrievedChunk
 from app.core.utils import stable_json_dumps
 from app.implementations.ollama_client import OllamaClient
+
+ProgressCallback = Callable[[str], None]
 
 # Deutsche Bezeichner + Einheiten für die GearParameters-Felder (Format: cad_processor/src/output_schema.py).
 # Das LLM (insb. kleine Modelle) kann deutsche Fragebegriffe sonst nicht auf die englischen,
@@ -56,14 +58,24 @@ _CAD_FIELD_LABELS: dict[tuple[str, str], tuple[str, str]] = {
 }
 
 
+def _cad_value(value: Any) -> Any:
+    """Entpackt GearParameters-Werte im Format {"value": ..., "unit": ..., "confidence": ...}."""
+    if isinstance(value, dict) and "value" in value:
+        return value.get("value")
+    return value
+
+
 def _fmt_value(value: Any, unit: str) -> Optional[str]:
     """Formatiert einen Wert; gibt None für leere/uninteressante Werte zurück (überspringen)."""
+    if isinstance(value, dict) and "value" in value:
+        unit = unit or str(value.get("unit") or "")
+        value = value.get("value")
     if value is None or value == "" or value == []:
         return None
     if isinstance(value, bool):
         return "ja" if value else "nein"
     if isinstance(value, list):
-        return ", ".join(str(v) for v in value)
+        return ", ".join(str(_cad_value(v)) for v in value)
     if unit:
         return f"{value} {unit}"
     return str(value)
@@ -75,7 +87,7 @@ def _cad_summary_sentence(cad: dict[str, Any]) -> str:
     Fragen wie „Um welches Zahnrad handelt es sich?" direkt zu beantworten, statt nur
     eine Parameterliste vorzufinden, die sie nicht mit der Frage verknüpfen.
     """
-    gt = cad.get("gear_type")
+    gt = _cad_value(cad.get("gear_type"))
     typ = _GEAR_TYPE_LABELS.get(gt, gt) if gt else "Zahnrad"
     tp = cad.get("tooth_profile") or {}
     mc = cad.get("material_context") or {}
@@ -83,20 +95,21 @@ def _cad_summary_sentence(cad: dict[str, Any]) -> str:
 
     parts: list[str] = []
     if tp.get("module_mm") is not None:
-        parts.append(f"Modul {tp['module_mm']} mm")
+        parts.append(f"Modul {_fmt_value(tp['module_mm'], 'mm')}")
     if tp.get("num_teeth") is not None:
-        parts.append(f"{tp['num_teeth']} Zähnen")
-    if tp.get("helix_angle_deg"):
-        parts.append(f"Schrägungswinkel {tp['helix_angle_deg']}°")
+        parts.append(f"{_fmt_value(tp['num_teeth'], '')} Zähnen")
+    helix_angle = _cad_value(tp.get("helix_angle_deg"))
+    if helix_angle:
+        parts.append(f"Schrägungswinkel {_fmt_value(tp['helix_angle_deg'], '°')}")
     if mc.get("material"):
-        parts.append(f"Werkstoff {mc['material']}")
+        parts.append(f"Werkstoff {_fmt_value(mc['material'], '')}")
 
     # Direkt als Identifikation formuliert, damit auch generische Fragen wie
     # "Um welches Zahnrad handelt es sich?" direkt beantwortbar sind.
-    sentence = f"Es handelt sich um folgendes Bauteil: eine {typ}" if gt else "Es handelt sich um folgendes Bauteil: ein Zahnrad"
+    sentence = f"CAD-Identifikation: Das aktuell geladene Bauteil ist eine {typ}" if gt else "CAD-Identifikation: Das aktuell geladene Bauteil ist ein Zahnrad"
     if parts:
         sentence += " mit " + ", ".join(parts)
-    name = meta.get("part_name")
+    name = _cad_value(meta.get("part_name"))
     if name:
         sentence += f" (Teilename „{name}“)"
     return sentence + "."
@@ -112,8 +125,12 @@ def cad_to_readable(cad: dict[str, Any]) -> str:
     if not cad:
         return "(Kein Bauteil geladen.)"
 
-    lines: list[str] = [_cad_summary_sentence(cad), ""]
-    gt = cad.get("gear_type")
+    lines: list[str] = [
+        "CAD-Bauteildaten haben Vorrang für Fragen zum aktuell geladenen Bauteil.",
+        _cad_summary_sentence(cad),
+        "",
+    ]
+    gt = _cad_value(cad.get("gear_type"))
     if gt:
         lines.append(f"- Verzahnungstyp: {_GEAR_TYPE_LABELS.get(gt, gt)}")
     if cad.get("topology", {}).get("is_internal_gear"):
@@ -167,6 +184,15 @@ NO_CHUNKS_NOTICE = (
     "BAUTEILDATEN und verwende KEINE [Q]-Markierungen."
 )
 
+_CAD_IDENTITY_PATTERNS = (
+    r"\bum welches\s+zahnrad\b",
+    r"\bwelches\s+zahnrad\b",
+    r"\bwas\s+ist\s+das\s+f[uü]r\s+ein\s+zahnrad\b",
+    r"\bzahnradtyp\b",
+    r"\bverzahnungstyp\b",
+    r"\bbauteiltyp\b",
+)
+
 
 def resolve_format_instruction(answer_format: Optional[str]) -> str:
     """Übersetzt die Format-Auswahl (kurz/standard/…) in die konkrete LLM-Anweisung; Fallback: standard."""
@@ -174,6 +200,47 @@ def resolve_format_instruction(answer_format: Optional[str]) -> str:
         (answer_format or DEFAULT_FORMAT).strip().casefold(),
         FORMAT_INSTRUCTIONS[DEFAULT_FORMAT],
     )
+
+
+def maybe_answer_cad_identity_question(question: str, cad: dict[str, Any]) -> Optional[str]:
+    """
+    Deterministischer Fast-Path für CAD-Identifikationsfragen.
+    Solche Fragen sollen den `gear_type` aus der STEP/CAD-Analyse verwenden und nicht erst
+    durch einen langsamen LLM-Call oder allgemeine Wissensauszüge verwässert werden.
+    """
+    if not cad:
+        return None
+    q = (question or "").casefold()
+    if not any(re.search(pattern, q) for pattern in _CAD_IDENTITY_PATTERNS):
+        return None
+
+    gt = _cad_value(cad.get("gear_type"))
+    if not gt:
+        return None
+
+    label = _GEAR_TYPE_LABELS.get(gt, str(gt))
+    tp = cad.get("tooth_profile") or {}
+    geo = cad.get("basic_geometry") or {}
+    mc = cad.get("material_context") or {}
+
+    details: list[str] = []
+    teeth = _fmt_value(tp.get("num_teeth"), "")
+    module = _fmt_value(tp.get("module_mm"), "mm")
+    pitch = _fmt_value(geo.get("pitch_diameter_mm"), "mm")
+    material = _fmt_value(mc.get("material"), "")
+    if teeth:
+        details.append(f"{teeth} Zähnen")
+    if module:
+        details.append(f"Modul {module}")
+    if pitch:
+        details.append(f"Teilkreisdurchmesser {pitch}")
+    if material:
+        details.append(f"Werkstoff {material}")
+
+    answer = f"Es handelt sich um ein {label}"
+    if details:
+        answer += " mit " + ", ".join(details)
+    return answer + " [CAD]."
 
 
 def _source_title(chunk_source_path: str, metadata: dict[str, Any]) -> str:
@@ -259,6 +326,7 @@ class OllamaAnswerGenerator:
         chunks: list[RetrievedChunk],
         cad_metadata: dict,
         answer_format: Optional[str] = None,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> Answer:
         """
         Wandelt Chunks in einen [Q1]/[Q2]-Block um, fügt CAD-Kontext hinzu und ruft das LLM auf.
@@ -270,6 +338,15 @@ class OllamaAnswerGenerator:
         # Chunks als lesbaren [Q1]/[Q2]-Block + Source-Liste (gemeinsamer Helper, auch vom
         # Multi-Agenten-Generator genutzt – garantiert identische Quellennummerierung).
         chunks_block, sources = build_chunks_block_and_sources(chunks)
+
+        fast_answer = maybe_answer_cad_identity_question(question, cad_metadata)
+        if fast_answer:
+            if progress_callback:
+                progress_callback("answer_generation_start")
+                progress_callback("answer_generation_done")
+                progress_callback("validation_skipped")
+                progress_callback("improvement_skipped")
+            return {"question": question, "answer_text": fast_answer, "sources": sources}
 
         format_instruction = resolve_format_instruction(answer_format)
 
@@ -285,11 +362,19 @@ class OllamaAnswerGenerator:
             FORMAT=format_instruction,
         )
 
-        answer_text = self.client.generate(
-            model=self.model_name,
-            prompt=prompt,
-            temperature=self.temperature,  # niedrig = faktenorientiert
-            max_tokens=self.max_tokens,
-        )
+        if progress_callback:
+            progress_callback("answer_generation_start")
+        try:
+            answer_text = self.client.generate(
+                model=self.model_name,
+                prompt=prompt,
+                temperature=self.temperature,  # niedrig = faktenorientiert
+                max_tokens=self.max_tokens,
+            )
+        finally:
+            if progress_callback:
+                progress_callback("answer_generation_done")
+                progress_callback("validation_skipped")
+                progress_callback("improvement_skipped")
 
         return {"question": question, "answer_text": answer_text, "sources": sources}

@@ -52,6 +52,22 @@ class FakeOllamaClient:
 
     def generate(self, *, model, prompt, temperature=None, max_tokens=None):
         self.text_calls.append(prompt)
+        if self._json:
+            nxt = self._json.pop(0)
+            if isinstance(nxt, Exception):
+                raise nxt
+            if isinstance(nxt, dict) and "answer" in nxt:
+                steps = "\n".join(f"- {s}" for s in nxt.get("steps", []))
+                return f"ANTWORT:\n{nxt['answer']}\n\nSCHRITTE:\n{steps}"
+            if isinstance(nxt, dict) and "status" in nxt:
+                issues = "\n".join(f"- {s}" for s in nxt.get("issues", []))
+                return (
+                    f"URTEIL: {nxt.get('status', '')}\n"
+                    f"BEFUND: {nxt.get('findings', '')}\n"
+                    f"MAENGEL:\n{issues}\n"
+                    f"KORREKTUR:\n{nxt.get('corrected_answer', '')}"
+                )
+            return str(nxt)
         return self._text_response
 
 
@@ -99,7 +115,7 @@ def test_happy_path_approved():
     assert agents[0] == "orchestrator"
     assert "solver" in agents and "reviewer" in agents
     assert answer["review"]["status"] == "freigegeben"
-    assert len(fake.json_calls) == 2  # genau Solver + Reviewer, keine Revision
+    assert len(fake.text_calls) == 2  # genau Solver + Reviewer, keine Revision
 
 
 def test_reviewer_corrects_directly():
@@ -113,7 +129,7 @@ def test_reviewer_corrects_directly():
     assert answer["review"]["status"] == "korrigiert"
     statuses = [s.get("status") for s in answer["agent_trace"]]
     assert "korrigiert" in statuses
-    assert len(fake.json_calls) == 2  # corrected_answer vorhanden → keine zusätzliche Revision
+    assert len(fake.text_calls) == 2  # corrected_answer vorhanden → keine zusätzliche Revision
 
 
 def test_revision_when_no_corrected_answer():
@@ -125,7 +141,7 @@ def test_revision_when_no_corrected_answer():
     answer = _ask(gen)
 
     assert answer["answer_text"] == "Überarbeitete, belegte Antwort [Q1]."
-    assert len(fake.json_calls) == 3  # Solver + Reviewer + eine Revision
+    assert len(fake.text_calls) == 3  # Solver + Reviewer + eine Revision
 
 
 def test_no_revision_when_disabled():
@@ -136,7 +152,7 @@ def test_no_revision_when_disabled():
 
     # Keine Korrektur möglich → Entwurf bleibt, aber klar gekennzeichnet.
     assert answer["answer_text"] == SOLVER_OK["answer"]
-    assert len(fake.json_calls) == 2
+    assert len(fake.text_calls) == 2
 
 
 def test_review_disabled_runs_only_solver():
@@ -147,7 +163,7 @@ def test_review_disabled_runs_only_solver():
     assert answer["answer_text"] == SOLVER_OK["answer"]
     assert "review" not in answer
     assert all(s["agent"] != "reviewer" for s in answer["agent_trace"])
-    assert len(fake.json_calls) == 1
+    assert len(fake.text_calls) == 1
 
 
 def test_fallback_on_invalid_solver_json():
@@ -159,7 +175,7 @@ def test_fallback_on_invalid_solver_json():
     assert answer["answer_text"] == FALLBACK_TEXT
     assert len(answer["agent_trace"]) == 1
     assert answer["agent_trace"][0]["status"] == "fallback"
-    assert len(fake.text_calls) == 1  # Single-Pass wurde genutzt
+    assert len(fake.text_calls) == 2  # fehlgeschlagener Solver + Single-Pass-Fallback
 
 
 def test_reviewer_failure_keeps_draft():
@@ -171,7 +187,7 @@ def test_reviewer_failure_keeps_draft():
     assert answer["answer_text"] == SOLVER_OK["answer"]   # kein teurer Fallback
     assert "review" not in answer
     assert any(s["agent"] == "reviewer" and s.get("status") == "warnung" for s in answer["agent_trace"])
-    assert len(fake.text_calls) == 0  # Single-Pass NICHT genutzt
+    assert len(fake.text_calls) == 2  # Solver + Reviewer, Single-Pass NICHT zusätzlich genutzt
 
 
 def test_extended_answer_schema_is_backward_compatible():

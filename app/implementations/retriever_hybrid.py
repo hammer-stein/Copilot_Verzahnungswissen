@@ -12,8 +12,12 @@ fließen erst in der Antwortstufe (OllamaAnswerGenerator) als Kontext ein.
 
 from __future__ import annotations
 
+from typing import Callable, Optional
+
 from app.core.interfaces import Embedder, VectorStore
 from app.core.types import RetrievedChunk
+
+ProgressCallback = Callable[[str], None]
 
 
 class HybridRetriever:
@@ -45,14 +49,20 @@ class HybridRetriever:
         self.hybrid_sparse_weight = hybrid_sparse_weight
         self.candidate_multiplier = max(1, candidate_multiplier)
 
-    def retrieve(self, question: str) -> list[RetrievedChunk]:
+    def retrieve(self, question: str, progress_callback: Optional[ProgressCallback] = None) -> list[RetrievedChunk]:
         """Bettet die Suchanfrage ein und gibt die top_k ähnlichsten Chunks zurück."""
+        if progress_callback:
+            progress_callback("embedding_start")
         embedding = self.embedder.embed([question])
+        if progress_callback:
+            progress_callback("embedding_done")
         qvec = embedding.dense_vectors[0]
         qsparse = embedding.sparse_vectors[0] if embedding.sparse_vectors else None
 
         candidate_k = self.top_k * self.candidate_multiplier if self.use_hybrid else self.top_k
 
+        if progress_callback:
+            progress_callback("search_start")
         hits = self.store.search(
             qvec,
             top_k=candidate_k,
@@ -62,6 +72,8 @@ class HybridRetriever:
             hybrid_dense_weight=self.hybrid_dense_weight,
             hybrid_sparse_weight=self.hybrid_sparse_weight,
         )
+        if progress_callback:
+            progress_callback("search_done")
 
         return [
             RetrievedChunk(chunk=h.chunk, metadata=h.metadata, similarity=h.score)

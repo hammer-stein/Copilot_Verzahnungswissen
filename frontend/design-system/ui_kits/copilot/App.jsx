@@ -19,26 +19,59 @@ const GEAR_TYPE_LABELS = {
 
 /* Map raw backend cad_metadata (GearParameters nested format from cad_processor /
    the synthetic test JSONs) → the stringified gear shape the UI renders. */
+function cadValue(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, 'value')) {
+    return value.value;
+  }
+  return value;
+}
+
+function cadText(value) {
+  const v = cadValue(value);
+  if (v === null || v === undefined || v === '') return '—';
+  if (typeof v === 'number') {
+    return Number.isFinite(v)
+      ? v.toLocaleString('de-DE', { maximumFractionDigits: 4 })
+      : '—';
+  }
+  if (typeof v === 'boolean') return v ? 'Ja' : 'Nein';
+  if (Array.isArray(v)) return v.length ? v.map(cadText).join(', ') : '—';
+  if (typeof v === 'object') {
+    try {
+      return JSON.stringify(v);
+    } catch (e) {
+      return String(v);
+    }
+  }
+  return String(v);
+}
+
+function gearTypeText(value) {
+  const raw = cadValue(value);
+  if (raw === null || raw === undefined || raw === '') return '—';
+  const key = String(raw);
+  return GEAR_TYPE_LABELS[key] || key;
+}
+
 function toGear(cad) {
   if (!cad || typeof cad !== 'object' || Object.keys(cad).length === 0) return null;
-  const s = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
   const tp = cad.tooth_profile || {};
   const geo = cad.basic_geometry || {};
   const mc = cad.material_context || {};
   return {
-    verzahnungstyp: cad.gear_type ? (GEAR_TYPE_LABELS[cad.gear_type] || cad.gear_type) : '—',
-    modul: s(tp.module_mm),
-    zaehnezahl: s(tp.num_teeth),
-    eingriffswinkel: s(tp.pressure_angle_deg),
-    schraegungswinkel: s(tp.helix_angle_deg),
-    profilverschiebung: s(tp.profile_shift_x),
-    teilkreis: s(geo.pitch_diameter_mm),
-    kopfkreis: s(geo.outer_diameter_mm),
-    fusskreis: s(geo.root_diameter_mm),
-    zahnbreite: s(geo.face_width_mm),
-    werkstoff: s(mc.material),
-    haerte: s(mc.tolerance_class),
-    qualitaet: s(mc.quality_class_din),
+    verzahnungstyp: gearTypeText(cad.gear_type),
+    modul: cadText(tp.module_mm),
+    zaehnezahl: cadText(tp.num_teeth),
+    eingriffswinkel: cadText(tp.pressure_angle_deg),
+    schraegungswinkel: cadText(tp.helix_angle_deg),
+    profilverschiebung: cadText(tp.profile_shift_x),
+    teilkreis: cadText(geo.pitch_diameter_mm),
+    kopfkreis: cadText(geo.outer_diameter_mm),
+    fusskreis: cadText(geo.root_diameter_mm),
+    zahnbreite: cadText(geo.face_width_mm),
+    werkstoff: cadText(mc.material),
+    haerte: cadText(mc.tolerance_class),
+    qualitaet: cadText(mc.quality_class_din),
   };
 }
 
@@ -201,6 +234,9 @@ function toSources(sources, documents) {
 
 /* German label + icon per agent role for the prüfbarer Lösungsweg (agent_trace). */
 const AGENT_META = {
+  embedding: { label: 'Embedding', icon: 'circle' },
+  retrieval: { label: 'Chunk-Suche', icon: 'search' },
+  answer_generation: { label: 'Antwortgenerierung', icon: 'sparkles' },
   orchestrator: { label: 'Orchestrator', icon: 'cog' },
   solver: { label: 'Lösungs-Agent', icon: 'sparkles' },
   reviewer: { label: 'Prüf-Agent', icon: 'shield-check' },
@@ -222,6 +258,15 @@ function toSteps(trace) {
         status: s.status || '',
       };
     });
+}
+
+function processStepsFromBackend(steps) {
+  return toSteps((steps || []).map((s) => ({
+    agent: s.agent || s.key,
+    title: s.title,
+    content: s.content,
+    status: s.status,
+  })));
 }
 
 const PDF_RE = /\.pdf$/i;
@@ -254,8 +299,10 @@ function App() {
   const [activeChat, setActiveChat] = React.useState(null);
   const [format, setFormat] = React.useState('standard');
   const [generating, setGenerating] = React.useState(false);
+  const [processSteps, setProcessSteps] = React.useState([]);
   /* Raw backend cad_metadata (sent to /ask); null until a STEP is analysed. */
   const [cadMeta, setCadMeta] = React.useState(null);
+  const [cadPreview, setCadPreview] = React.useState(null);
 
   const gearView = toGear(cadMeta) || EMPTY_GEAR;
 
@@ -385,12 +432,33 @@ function App() {
     }
     appendMsg(chatId, { role: 'user', text });
     setGenerating(true);
+    const requestId = 'ask_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    setProcessSteps(processStepsFromBackend([
+      { agent: 'embedding', title: 'Embedding', content: 'Fragevektor wird vorbereitet.', status: 'running' },
+      { agent: 'retrieval', title: 'Chunk-Suche', content: 'Wartet auf Embedding.', status: 'pending' },
+      { agent: 'solver', title: 'Antwortgenerierung', content: 'Wartet auf relevante Kontexte.', status: 'pending' },
+      { agent: 'reviewer', title: 'Validierung', content: 'Wartet auf Antwortentwurf.', status: 'pending' },
+      { agent: 'solver', title: 'Verbesserung', content: 'Wird nur bei Prüfbefund ausgeführt.', status: 'pending' },
+    ]));
+
+    let pollTimer = null;
+    const pollStatus = async () => {
+      try {
+        const sr = await fetch(`${API}/ask/status/${encodeURIComponent(requestId)}`);
+        if (!sr.ok) return;
+        const sj = await sr.json();
+        setProcessSteps(processStepsFromBackend(sj.steps || []));
+      } catch (e) {
+        console.debug('Prozessstatus nicht verfügbar', e);
+      }
+    };
+    pollTimer = window.setInterval(pollStatus, 700);
 
     try {
       const r = await fetch(`${API}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questions: [text], cad_metadata: cadMeta || {}, format }),
+        body: JSON.stringify({ questions: [text], cad_metadata: cadMeta || {}, format, request_id: requestId }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
@@ -429,6 +497,8 @@ function App() {
         sources: [],
       });
     } finally {
+      if (pollTimer) window.clearInterval(pollTimer);
+      await pollStatus();
       setGenerating(false);
     }
   };
@@ -468,6 +538,7 @@ function App() {
     /* GearParameters test JSON → load directly as the active part (no server round-trip). */
     if (JSON_RE.test(file.name)) {
       setActivePart({ name: file.name, status: 'indexing' });
+      setCadPreview(null);
       try {
         const text = await file.text();
         const parsed = JSON.parse(text);
@@ -475,6 +546,7 @@ function App() {
           throw new Error('Keine gültigen GearParameters (gear_type / tooth_profile fehlen).');
         }
         setCadMeta(parsed);
+        setCadPreview(null);
         setActivePart({ name: file.name, status: 'ready' });
       } catch (e) {
         console.error('JSON-Bauteil konnte nicht geladen werden', e);
@@ -489,6 +561,7 @@ function App() {
     }
 
     setActivePart({ name: file.name, status: 'indexing' });
+    setCadPreview(null);
     const fd = new FormData();
     fd.append('file', file);
     try {
@@ -499,6 +572,9 @@ function App() {
         throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
       }
       setCadMeta(j);
+      setCadPreview((j && j.preview && j.preview.mesh_url)
+        ? { url: j.preview.mesh_url, format: j.preview.format || 'stl', name: file.name }
+        : null);
       setActivePart({ name: file.name, status: 'ready' });
     } catch (e) {
       console.error('CAD-Analyse fehlgeschlagen', e);
@@ -550,12 +626,12 @@ function App() {
             />
             {messages.length === 0
               ? <EmptyState onPick={send} />
-              : <ChatView key={activeChat} messages={messages} generating={generating} />}
+              : <ChatView key={activeChat} messages={messages} generating={generating} processSteps={processSteps} />}
             <Composer onSend={send} format={format} onFormat={setFormat} formats={D.formats} onUploadStep={uploadFile} />
           </>
         )}
       </div>
-      {showInspector && <Inspector gear={gearView} raw={cadMeta} hasPart={!!cadMeta} onClose={() => setInspectorOpen(false)} />}
+      {showInspector && <Inspector gear={gearView} raw={cadMeta} preview={cadPreview} hasPart={!!cadMeta} onClose={() => setInspectorOpen(false)} />}
       {sidebarOpen && <div className="vc-scrim" onClick={() => setSidebarOpen(false)} />}
     </div>
   );

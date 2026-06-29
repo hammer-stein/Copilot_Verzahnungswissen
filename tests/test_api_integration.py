@@ -140,3 +140,16 @@ def test_ask_threads_format_through_to_generator():
 def test_ask_defaults_to_standard_format():
     client.post("/ask", json={"questions": ["Frage ohne Format?"]})
     assert _LAST_CALL["answer_format"] == "standard"
+
+
+def test_ask_status_endpoint_tracks_request_id():
+    request_id = "pytest-status-request"
+    r = client.post("/ask", json={"questions": ["Status?"], "request_id": request_id})
+    assert r.status_code == 200
+
+    s = client.get(f"/ask/status/{request_id}")
+    assert s.status_code == 200
+    body = s.json()
+    assert body["request_id"] == request_id
+    assert body["status"] == "done"
+    assert [step["key"] for step in body["steps"]][:2] == ["embedding", "search"]

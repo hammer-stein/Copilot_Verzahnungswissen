@@ -2,15 +2,16 @@
 solver.py – Lösungs-Agent des Multi-Agenten-Flows.
 
 Entwirft aus Frage, Retriever-Chunks und CAD-Bauteildaten eine begründete Antwort und
-legt seinen Lösungsweg in Einzelschritten offen. Liefert strukturiertes JSON
-({"answer": ..., "steps": [...]}) für die nachgelagerte Prüfung durch den ReviewerAgent.
+legt seinen Lösungsweg in Einzelschritten offen. Nutzt ein label-basiertes Ausgabeformat
+(ANTWORT:/SCHRITTE:) statt JSON – das halten kleine Modelle zuverlässig ein und es kann
+nicht wie JSON an Escaping oder abgeschnittenen Strings scheitern.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.pipeline.agents.base import LlmAgent, as_str, as_str_list
+from app.pipeline.agents.base import LlmAgent, parse_bullets, parse_labeled_sections
 
 
 @dataclass(frozen=True)
@@ -32,24 +33,31 @@ class SolverAgent(LlmAgent):
         format_instruction: str,
     ) -> SolverResult:
         """
-        Ruft das LLM mit dem Solver-Prompt auf und normalisiert die JSON-Antwort zu SolverResult.
-        Wirft ValueError, wenn keine verwertbare Antwort geliefert wird – der Aufrufer
-        (MultiAgentAnswerGenerator) fängt das ab und fällt auf den Single-Pass zurück.
+        Ruft das LLM mit dem Solver-Prompt auf und parst die label-basierte Antwort zu SolverResult.
+        Robuster Fallback: Lässt das Modell die ANTWORT-Marke weg, wird der Text bis "SCHRITTE"
+        als Antwort genommen. Wirft ValueError nur, wenn gar keine verwertbare Antwort kommt –
+        der Aufrufer (MultiAgentAnswerGenerator) fängt das ab und fällt auf den Single-Pass zurück.
         """
-        raw = self._generate_json(
+        text = self._generate_text(
             CAD_METADATA_JSON=cad_block,
             CHUNKS_BLOCK=chunks_block,
             QUESTION=question,
             FORMAT=format_instruction,
         )
-        if not isinstance(raw, dict):
-            raise ValueError(f"Solver lieferte kein JSON-Objekt: {type(raw).__name__}")
+        sections = parse_labeled_sections(text, ["ANTWORT", "SCHRITTE"])
+        answer = sections["ANTWORT"].strip()
+        steps = parse_bullets(sections["SCHRITTE"])
 
-        answer = as_str(raw.get("answer"))
         if not answer:
-            raise ValueError("Solver-Antwort enthält kein nicht-leeres Feld 'answer'.")
+            # Modell hat die ANTWORT-Marke weggelassen → Text bis "SCHRITTE" als Antwort nehmen.
+            raw = text.strip()
+            idx = raw.upper().find("SCHRITTE")
+            answer = (raw[:idx] if idx > 0 else raw).strip()
 
-        return SolverResult(answer=answer, steps=as_str_list(raw.get("steps")))
+        if not answer:
+            raise ValueError("Solver lieferte keine verwertbare Antwort.")
+
+        return SolverResult(answer=answer, steps=steps)
 
     def revise(
         self,

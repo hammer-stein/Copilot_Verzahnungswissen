@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app.core.types import Chunk, RetrievedChunk
-from app.implementations.answer_generator_ollama import OllamaAnswerGenerator
+from app.implementations.answer_generator_ollama import OllamaAnswerGenerator, cad_to_prompt_context
 
 
 class _PromptClient:
@@ -93,6 +93,68 @@ def test_answer_sources_use_document_title_instead_of_upload_path(tmp_path):
     assert answer["sources"][0]["doc_hash"] == "abc"
     assert "DIN_3990_Tragfaehigkeit.pdf" in client.prompt
     assert "20260616_110541" not in answer["sources"][0]["title"]
+
+
+def test_cad_prompt_accepts_parameter_value_dicts():
+    cad = {
+        "gear_type": {"value": "spur", "unit": "", "confidence": 0.82},
+        "tooth_profile": {
+            "module_mm": {"value": 2.5, "unit": "mm", "confidence": 0.82},
+            "num_teeth": {"value": 34, "unit": "", "confidence": 0.45},
+            "helix_angle_deg": {"value": 0.0, "unit": "°", "confidence": 0.3},
+        },
+        "basic_geometry": {
+            "outer_diameter_mm": {"value": 90.0, "unit": "mm", "confidence": 0.92},
+        },
+        "material_context": {
+            "material": {"value": "16MnCr5", "unit": "", "confidence": 0.6},
+        },
+    }
+
+    prompt = cad_to_prompt_context(cad)
+
+    assert "Stirnrad" in prompt
+    assert "Modul 2.5 mm" in prompt
+    assert "34 Zähnen" in prompt
+    assert "Werkstoff 16MnCr5" in prompt
+
+
+def test_cad_identity_question_is_answered_without_llm_call(tmp_path):
+    prompt_path = tmp_path / "prompt.txt"
+    prompt_path.write_text(
+        "{DOMAIN}\n{CAD_METADATA_JSON}\n{CHUNKS_BLOCK}\n{QUESTION}\n{FORMAT}",
+        encoding="utf-8",
+    )
+
+    class FailingClient:
+        def generate(self, **kwargs):
+            raise AssertionError("LLM should not be called for direct CAD identity questions")
+
+    generator = OllamaAnswerGenerator(
+        model_name="test",
+        base_url="http://ollama.invalid",
+        timeout_s=1,
+        prompt_path=prompt_path,
+        domain_name="Verzahnung",
+        max_tokens=128,
+        temperature=0.0,
+    )
+    generator.client = FailingClient()
+
+    answer = generator.generate(
+        question="Um welches Zahnrad handelt es sich?",
+        chunks=[],
+        cad_metadata={
+            "gear_type": {"value": "spur"},
+            "tooth_profile": {
+                "num_teeth": {"value": 24},
+                "module_mm": {"value": 2.5, "unit": "mm"},
+            },
+        },
+    )
+
+    assert "Stirnrad" in answer["answer_text"]
+    assert "[CAD]" in answer["answer_text"]
 
 
 def test_synthetic_cad_testdata_exists_and_is_consistent():
