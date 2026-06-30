@@ -1,0 +1,125 @@
+{
+  "zeitstempel": "20260521_145245",
+  "modell": "llama3.2:3b",
+  "cad_kontext": {
+    "verzahnungstyp": "Stirnrad",
+    "modul": 6.0,
+    "zaehnezahl": 23,
+    "eingriffswinkel": 20.0,
+    "schraegungswinkel": 0.0,
+    "profilverschiebung": -0.28,
+    "teilkreisdurchmesser": 138.0,
+    "kopfkreisdurchmesser": 146.64,
+    "fusskreisdurchmesser": 119.64,
+    "zahnbreite": 83.7,
+    "werkstoff": "20MnCr5",
+    "haerte": "vergütet",
+    "verzahnungsqualitaet": 8,
+    "drehrichtung": null
+  },
+  "chunker_threshold": 0.4,
+  "similarity_threshold": 0.5,
+  "fragen": [
+    {
+      "frage": "Welche Werkstoffe und Wärmebehandlungen eignen sich für dieses Zahnrad?",
+      "treffer_anzahl": 5,
+      "treffer": [
+        {
+          "rank": 1,
+          "score": 0.60126,
+          "seite": 14,
+          "quelle": "verzahnung_wissensbasis_ausfuehrlich.pdf",
+          "metadaten": {
+            "verzahnungstyp": "Stirnrad",
+            "modul": {
+              "modul_min": null,
+              "modul_max": null
+            }
+          },
+          "text_vorschau": "12\nWirkungsgrad\n0,98–0,995\n0,98–0,995\n0,97–0,99\n0,60–0,92\n0,99–0,999\nAxialkraft\nnein\nja\nja\nja\nnein\nSelbsthemmung\nnein\nnein\nnein\nmoeglich\nnein\nLaufruhegüte\nmittel\nhoch\nhoch (Sp.)\nsehr hoch\nhoch\nBauläng"
+        },
+        {
+          "rank": 2,
+          "score": 0.56186,
+          "seite": 4,
+          "quelle": "verzahnung_testdokument.pdf",
+          "metadaten": {
+            "verzahnungstyp": "Stirnrad",
+            "norm": "DIN 3960",
+            "themenkategorie": "Festigkeit",
+            "anwendungsbereich": "allgemein"
+          },
+          "text_vorschau": "4. Tragfähigkeitsberechnung und Schmierung\n4.1 Zahnfußtragfähigkeit (DIN 3990 / ISO 6336)\nDie Zahnfußtragfähigkeit wird nach DIN 3990 Teil 3 bzw. ISO 6336 Teil 3 berechnet. Die\nauftretende Zahnfußspan"
+        },
+        {
+          "rank": 3,
+          "score": 0.54152,
+          "seite": 3,
+          "quelle": "verzahnung_wissensbasis_ausfuehrlich.pdf",
+          "metadaten": {
+            "verzahnungstyp": "Stirnrad"
+          },
+          "text_vorschau": "1.4 Tragfähigkeit\n1.4.1 Zahnfußtragfähigkeit nach ISO 6336\nDie Zahnfußspannung sigma_F wird nach ISO 6336 (Methode B) berechnet. Maßgebend ist der\nQuerschnitt am Fußkreis, wo die Biegebeanspruchung ma"
+        },
+        {
+          "rank": 4,
+          "score": 0.52474,
+          "seite": 2,
+          "quelle": "verzahnung_wissensbasis_ausfuehrlich.pdf",
+          "metadaten": {
+            "verzahnungstyp": "Stirnrad"
+          },
+          "text_vorschau": "1 Stirnräder mit Geradverzahnung\n1.1 Grundlagen und Einordnung\nGeradverzahnte Stirnräder (Verzahnungstyp: Stirnrad) sind die am weitesten verbreitete Zahnradform im\nMaschinenbau. Ihre Zähne verlaufen "
+        },
+        {
+          "rank": 5,
+          "score": 0.52474,
+          "seite": 2,
+          "quelle": "verzahnung_wissensbasis_ausfuehrlich.pdf",
+          "metadaten": {
+            "verzahnungstyp": "Stirnrad"
+          },
+          "text_vorschau": "1 Stirnräder mit Geradverzahnung\n1.1 Grundlagen und Einordnung\nGeradverzahnte Stirnräder (Verzahnungstyp: Stirnrad) sind die am weitesten verbreitete Zahnradform im\nMaschinenbau. Ihre Zähne verlaufen "
+        }
+      ],
+      "antwort_text": "# Werkstoffe und Wärmebehandlung für das Zahnrad\n\nDas Zahnrad ist mit folgenden Materialien und Verarbeitungsmethoden ausgestattet:\n\n### Werkstoffe\n- **16MnCr5**: Dieser Stahl gilt als ideal, da er eine hohe Festigkeit bei geringem Gewicht bietet. \n- **20MnCr5**: Ebenfalls ein hochfestes Material, das für Hochbelastete Getriebe geeignet ist.\n\n### Wärmebehandlungen\n- **Normalisierung (C45)**: Eine Standardmethode zur Veredelung von Stählen, die eine gute Balance zwischen Stärke und Zähigkeit bietet.\n- **Vergütung (42CrMo4)**: Eine Behandlung, die das Material für Industriegetriebe geeignet macht. Sie verbessert die Festigkeit gegenüber der Normalisierung bei gleichzeitig einer geringerem Widerstand gegen Verformungen.\n\n### Empfehlung\nFür dieses Zahnrad eignen sich Werkstoffe wie **16MnCr5** und **20MnCr5**, die aufgrund ihrer hohen Festigkeit und Leichtbaukraft ideal für Anwendungen mit hohen Belastungspegeln geeignet sind. Die entsprechende Wärmebehandlung sollte durch Normalisierung oder Vergütung erfolgen, abhängig von der spezifischen Anwendung.",
+      "quellen": [
+        {
+          "qid": "Q1",
+          "source_path": "verzahnung_wissensbasis_ausfuehrlich.pdf",
+          "page_number": 14,
+          "similarity": 0.6012583,
+          "text": "12\nWirkungsgrad\n0,98–0,995\n0,98–0,995\n0,97–0,99\n0,60–0,92\n0,99–0,999\nAxialkraft\nnein\nja\nja\nja\nnein\nSelbsthemmung\nnein\nnein\nnein\nmoeglich\nnein\nLaufruhegüte\nmittel\nhoch\nhoch (Sp.)\nsehr hoch\nhoch\nBaulänge\nmittel\nmittel\nmittel\nkurz\nkurz\nFertigungsaufwand\ngering\nmittel\nhoch\nmittel\nmittel\nHauptnorm\nISO 6336\nISO 6336\nISO 10300\nISO 14521\nDIN 3993\nTabelle 7.1: Gesamtvergleich aller behandelten Zahnradtypen. SR = Schneckenrad. 7.1 Auswahlkriterien\nDie Wahl des geeigneten Zahnradtyps ergibt sich aus folgenden Kriterien in der Reihenfolge ihrer\nWichtung:\n• Achslage: Parallel → Stirnrad oder Innenverzahnung; Schneidend 90° → Kegelrad; Windschief 90°\n→ Schneckengetriebe. Diese Grundbedingung ist nicht verhandelbar.\n• Übersetzungsverhältnis: i > 20 in einer Stufe → Schneckengetriebe; i > 4 kompakt →\nPlanetengetriebe (Innenverzahnung); i ≤ 8 → Stirnrad.\n• Umfangsgeschwindigkeit: v > 15 m/s → zwingend Schrägverzahnung; v > 40 m/s →\nPräzisionsschrägverzahnung Q 5–6.\n• Geräusch: Schrägverzahnung > Geradverzahnung; Schneckengetriebe sehr leise; Kegelrad\n(gerade) laut. Bei Geräuschvorgaben stets epsilon_gamma > 2 anstreben.\n• Wirkungsgrad: Kritisch bei großen Leistungen und hohen Übersetzungen. Schneckengetriebe\nschlechter Wirkungsgrad → Wärmebilanz und ggf. Kühlung prüfen. Literaturhinweise: DIN 3960 (Begriffe Stirnräder), DIN 867 (Bezugsprofil), DIN 780 (Modulreihe), DIN\n3992 (Profilverschiebung), DIN 3965 (Kegelradtoleranzen), DIN 3975 (Schneckengetriebe), DIN 3993\n(Innenverzahnung), ISO 1328-1/2 (Genauigkeit Stirnräder), ISO 6336-1 bis 6 (Tragfähigkeit Stirnräder),\nISO 10300-1 bis 3 (Tragfähigkeit Kegelräder), ISO 14521 (Tragfähigkeit Schnecken)."
+        },
+        {
+          "qid": "Q2",
+          "source_path": "verzahnung_testdokument.pdf",
+          "page_number": 4,
+          "similarity": 0.56185967,
+          "text": "4. Tragfähigkeitsberechnung und Schmierung\n4.1 Zahnfußtragfähigkeit (DIN 3990 / ISO 6336)\nDie Zahnfußtragfähigkeit wird nach DIN 3990 Teil 3 bzw. ISO 6336 Teil 3 berechnet. Die\nauftretende Zahnfußspannung σF muss kleiner als die zulässige Zahnfußspannung σFP sein:\nσF = (Ft / (b · mn)) · YF · YS · Yβ · KA · Kv · KFβ\nBedingung: σF ≤ σFP Mindestsicherheit: SF ≥ 1,4\nKA ist der Anwendungsfaktor (1,0 bis 2,0 je nach Stoßcharakter), YF der Formfaktor, YS der\nSpannungskorrekturfaktor. 4.2 Flankentragfähigkeit (Grübchenbildung)\nDie Grübchentragfähigkeit nach DIN 3990 Teil 2 / ISO 6336 Teil 2 basiert auf der Hertzschen\nPressung an den Zahnflanken:\nσH = ZH · ZE · Zε · Zβ · √(Ft · KA · Kv / (b · d1))\nBedingung: σH ≤ σHP Mindestsicherheit: SH ≥ 1,1\nZE = 189,8 MPa0,5 für die Werkstoffpaarung Stahl/Stahl. ZH ist der Zonenfaktor (ZH = 2,5 für α =\n20°, β = 0°). 4.3 Werkstoffe und Wärmebehandlung\n• Einsatzstahl 16MnCr5, 20MnCr5: Einsatzhärten, Randschicht 58–62 HRC, σH,lim = 1500 MPa\n• Vergütungsstahl 42CrMo4: Vergüten auf 280–320 HB, σH,lim = 1050–1100 MPa\n• Nitrierstahl 31CrMoV9: Gasnitrieren, Nitrierhärte 600–700 HV, hohe Verschleißfestigkeit\n• Grauguss GG-25, GGG-50: geringe Belastungen, kostengünstig, gute\nDämpfungseigenschaften\n4.4 Verzahnungsqualität und Schmierung\nFertigungsgenauigkeit nach DIN 3961 in Qualitätsstufen 3–12 (3 = höchste Genauigkeit). Standardgetriebe: Qualität 6–8; Präzisionsgetriebe: Qualität 4–5.\n• Tauchschmierung: Zahnräder tauchen in Ölsumpf; geeignet für v < 12 m/s\n• Druckumlaufschmierung: Öl wird gezielt auf Eingriffsstelle gespritzt; notwendig bei v > 12 m/s\nund hohen thermischen Belastungen\n• Fettschmierung: seltene Wartung, niedrige Geschwindigkeiten, gekapselte Getriebe\nSynthetisches Testdokument | KI-Copilot Verzahnungswissen | Normen: DIN 3960 / 3961 / 3971 / 3990 · ISO 1328 / 6336"
+        },
+        {
+          "qid": "Q3",
+          "source_path": "verzahnung_wissensbasis_ausfuehrlich.pdf",
+          "page_number": 3,
+          "similarity": 0.5415209,
+          "text": "1.4 Tragfähigkeit\n1.4.1 Zahnfußtragfähigkeit nach ISO 6336\nDie Zahnfußspannung sigma_F wird nach ISO 6336 (Methode B) berechnet. Maßgebend ist der\nQuerschnitt am Fußkreis, wo die Biegebeanspruchung maximal ist:\nsigma_F = F_t / (b * m) * Y_F * Y_S * Y_beta * K_A * K_v * K_Fbeta *\nK_Falpha\nDabei sind: Y_F = Zahnformfaktor, Y_S = Spannungskorrekturfaktor, Y_beta = Schrägungsfaktor (= 1 bei\nGeradverzahnung), K_A = Anwendungsfaktor (1,0...2,0 je nach Betriebsart), K_v = dynamischer Faktor,\nK_Fbeta = Breitenlastverteilungsfaktor, K_Falpha = Stirnstoßzahl. Die zulässige Zahnfußspannung\nsigma_F_lim liegt für häufige Werkstoffe zwischen 200 N/mm² (C45 normalisiert) und 430 N/mm²\n(16MnCr5 einsatzgehärtet). 1.4.2 Flankentragfähigkeit (Grübchentragfähigkeit)\nDie Grübchenbildung (Pitting) entsteht durch Wechselhertz'sche Pressung an der Zahnflanke. Die\nBerechnungsgröße ist die Hertz'sche Pressung sigma_H:\nsigma_H = Z_H * Z_E * Z_epsilon * Z_beta * sqrt(F_t / (b * d_1) * (u+1)/u\n* K_A * K_v * K_Hbeta * K_Halpha)\nZ_H = Zonenfaktor (typisch 2,5 bei alpha=20°), Z_E = Elastizitätsfaktor (189,8 sqrt(N/mm²) für\nStahlpaarung), Z_epsilon = Überdeckungsfaktor, u = i = z_2/z_1. Grenzwert sigma_H_lim: bis 1500\nN/mm² bei einsatzgehärteten Stählen (ISO 6336-5). 1.5 Werkstoffe und Wärmebehandlung\nWerkstoff\nNorm\nHärtung\nOberfl.-Härte\nsigma_F_lim\n[N/mm²]\nAnwendung\nC45\nDIN EN 10083\nnormalisiert\n~200 HB\n200\nLeichtbau, Landmaschinen\n42CrMo4\nDIN EN 10083\nvergütet\n280–320 HB\n310\nIndustrie-Getriebe\n16MnCr5\nDIN EN 10084\neinsatzgehärtet\n58–62 HRC\n430 Kfz-Getriebe, Werkzeugmaschinen\n20MnCr5\nDIN EN 10084\neinsatzgehärtet\n58–62 HRC\n430\nHochbelastete Getriebe\n31CrMoV9\nDIN EN 10085\nnitriert\n700–900 HV\n390\nMaß-/Formstabilität gefordert\n18CrNiMo7-6\nDIN EN 10084\neinsatzgehärtet\n60–64 HRC\n450\nHochleistungsgetriebe\nTabelle 1.2: Werkstoffe für geradverzahnte Stirnräder. Angaben gelten für Standardqualität."
+        },
+        {
+          "qid": "Q4",
+          "source_path": "verzahnung_wissensbasis_ausfuehrlich.pdf",
+          "page_number": 2,
+          "similarity": 0.5247397,
+          "text": "1 Stirnräder mit Geradverzahnung\n1.1 Grundlagen und Einordnung\nGeradverzahnte Stirnräder (Verzahnungstyp: Stirnrad) sind die am weitesten verbreitete Zahnradform im\nMaschinenbau. Ihre Zähne verlaufen exakt parallel zur Rotationsachse, was Herstellung und Montage\nvereinfacht. Sie eignen sich für die Übertragung von Drehbewegungen und Drehmomenten zwischen\nparallelen Achsen. Das Eingriffsprinzip basiert auf der Evolventenverzahnung, bei der die\nEingriffsnormale stets durch den Wälzpunkt C verläuft – dies garantiert ein konstantes\nÜbersetzungsverhältnis unabhängig von kleinen Achsabstandsfehlern (Verzahnungsgesetz). Relevante\nNorm: DIN 3960 (Begriffe und Bestimmungsgrößen für Stirnräder mit Evolventenverzahnung). 1.2 Geometrie\n1.2.1 Grundgrößen\nDer Modul m ist die grundlegende Kenngröße der Verzahnung. Er ist nach DIN 780 genormt und stellt\nsicher, dass nur Räder gleichen Moduls miteinander kämmen können. Alle weiteren geometrischen\nGrößen leiten sich aus Modul und Zähnezahl z ab:\nTeilkreisdurchmesser: d = m * z\nKopfkreisdurchmesser: d_a = m * (z + 2) [x = 0]\nFußkreisdurchmesser: d_f = m * (z - 2.5) [x = 0]\nZahnkopfhoehe: h_a = m\nZahnfusshoehe: h_f = 1.25 * m\nTeilung: p = pi * m\nGrundkreisdurchmesser: d_b = d * cos(alpha)\nDer Standardeingriffswinkel beträgt alpha = 20° nach DIN 867 (Bezugsprofil). Der Achsabstand zweier\nkämmender Räder ergibt sich zu: a = (d_1 + d_2) / 2."
+        },
+        {
+          "qid": "Q5",
+          "source_path": "verzahnung_wissensbasis_ausfuehrlich.pdf",
+          "page_number": 2,
+          "similarity": 0.5247397,
+          "text": "1 Stirnräder mit Geradverzahnung\n1.1 Grundlagen und Einordnung\nGeradverzahnte Stirnräder (Verzahnungstyp: Stirnrad) sind die am weitesten verbreitete Zahnradform im\nMaschinenbau. Ihre Zähne verlaufen exakt parallel zur Rotationsachse, was Herstellung und Montage\nvereinfacht. Sie eignen sich für die Übertragung von Drehbewegungen und Drehmomenten zwischen\nparallelen Achsen. Das Eingriffsprinzip basiert auf der Evolventenverzahnung, bei der die\nEingriffsnormale stets durch den Wälzpunkt C verläuft – dies garantiert ein konstantes\nÜbersetzungsverhältnis unabhängig von kleinen Achsabstandsfehlern (Verzahnungsgesetz). Relevante\nNorm: DIN 3960 (Begriffe und Bestimmungsgrößen für Stirnräder mit Evolventenverzahnung). 1.2 Geometrie\n1.2.1 Grundgrößen\nDer Modul m ist die grundlegende Kenngröße der Verzahnung. Er ist nach DIN 780 genormt und stellt\nsicher, dass nur Räder gleichen Moduls miteinander kämmen können. Alle weiteren geometrischen\nGrößen leiten sich aus Modul und Zähnezahl z ab:\nTeilkreisdurchmesser: d = m * z\nKopfkreisdurchmesser: d_a = m * (z + 2) [x = 0]\nFußkreisdurchmesser: d_f = m * (z - 2.5) [x = 0]\nZahnkopfhoehe: h_a = m\nZahnfusshoehe: h_f = 1.25 * m\nTeilung: p = pi * m\nGrundkreisdurchmesser: d_b = d * cos(alpha)\nDer Standardeingriffswinkel beträgt alpha = 20° nach DIN 867 (Bezugsprofil). Der Achsabstand zweier\nkämmender Räder ergibt sich zu: a = (d_1 + d_2) / 2."
+        }
+      ]
+    }
+  ]
+}

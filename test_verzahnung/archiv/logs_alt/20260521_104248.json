@@ -1,0 +1,31 @@
+{
+  "zeitstempel": "20260521_104248",
+  "modell": "llama3.2:3b",
+  "cad_kontext": {
+    "verzahnungstyp": "Schrägverzahnung",
+    "modul": 3.0,
+    "zaehnezahl": 53,
+    "eingriffswinkel": 20.0,
+    "schraegungswinkel": 20.0,
+    "profilverschiebung": 0.15,
+    "teilkreisdurchmesser": 159.0,
+    "kopfkreisdurchmesser": 165.9,
+    "fusskreisdurchmesser": 152.4,
+    "zahnbreite": 30.6,
+    "werkstoff": "42CrMo4",
+    "haerte": "vergütet",
+    "verzahnungsqualitaet": 6,
+    "drehrichtung": "rechts"
+  },
+  "chunker_threshold": 0.4,
+  "similarity_threshold": 0.5,
+  "fragen": [
+    {
+      "frage": "Welche Norm gilt für diese Verzahnung?",
+      "treffer_anzahl": 0,
+      "treffer": [],
+      "antwort_text": null,
+      "quellen": []
+    }
+  ]
+}

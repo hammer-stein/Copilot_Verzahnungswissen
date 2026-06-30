@@ -1,4 +1,9 @@
-"""Gemeinsame Hilfen für evaluation_llm.ipynb und evaluation_final.ipynb."""
+"""Gemeinsame Hilfen für create_testset.py, evaluation_llm.ipynb und evaluation_final.ipynb.
+
+Aufgabenteilung:
+- create_testset.py erzeugt EINMALIG das Frage-Chunk-Testset (inkl. Chunk-Embedding).
+- Beide Evaluationsnotebooks LADEN nur dieses Testset und durchlaufen damit die Pipeline.
+"""
 
 from __future__ import annotations
 
@@ -13,11 +18,12 @@ from pathlib import Path
 from typing import Any
 
 
-TESTSET_SCHEMA_VERSION = 1
+# Schema 2: jedes Item enthält zusätzlich den Embedding-Vektor seines Chunks.
+TESTSET_SCHEMA_VERSION = 2
 
 
 def kosinus_aehnlichkeit(a, b) -> float:
-    """Kosinus-Ähnlichkeit analog zum bestehenden Pipeline-Notebook."""
+    """Kosinus-Ähnlichkeit zweier Vektoren."""
     dot = sum(x * y for x, y in zip(a, b))
     na = math.sqrt(sum(x * x for x in a)) or 1.0
     nb = math.sqrt(sum(y * y for y in b)) or 1.0
@@ -66,7 +72,8 @@ def lade_alle_qdrant_chunks(store, collection_name: str, *, batch_size: int = 25
     return chunks
 
 
-def _frage_prompt(chunk_text: str) -> str:
+def frage_prompt(chunk_text: str) -> str:
+    """Prompt, der GENAU EINE auf den Chunk zielende Fachfrage erzeugt."""
     return (
         "Formuliere GENAU EINE fachliche Frage auf Deutsch, die sich AUSSCHLIESSLICH "
         "mit dem Inhalt des folgenden Textabschnitts beantworten lässt. Die Frage muss "
@@ -76,7 +83,8 @@ def _frage_prompt(chunk_text: str) -> str:
     )
 
 
-def _saeubere_frage(text: str) -> str:
+def saeubere_frage(text: str) -> str:
+    """Reduziert die LLM-Ausgabe auf eine einzelne, saubere Frage."""
     zeilen = [zeile.strip() for zeile in str(text or "").splitlines() if zeile.strip()]
     if not zeilen:
         return ""
@@ -93,29 +101,24 @@ def _saeubere_frage(text: str) -> str:
     return frage + "?"
 
 
-def lade_oder_erstelle_testset(
+def erstelle_testset(
     *,
-    testset_path: Path,
     store,
+    embedder,
     collection_name: str,
     frage_client,
     model_name: str,
     n_items: int,
     random_seed: int,
-    neu_erstellen: bool = False,
-) -> tuple[dict[str, Any], bool]:
+) -> dict[str, Any]:
     """
-    Lädt das gemeinsame Frage-Chunk-Testset oder erstellt es genau einmal.
+    Erzeugt das Frage-Chunk-Testset aus der gesamten Wissensbasis.
 
-    Eine bestehende Datei wird nie stillschweigend überschrieben. Für ein bewusstes
-    neues Zufalls-Testset muss neu_erstellen=True gesetzt werden.
+    1. Liest ALLE texttragenden Qdrant-Punkte der Collection.
+    2. Zieht reproduzierbar (random_seed) n_items zufällige Chunks.
+    3. Erzeugt pro Chunk via `model_name` eine spezifische Frage.
+    4. Bettet jeden Chunk ein und legt den Vektor mit ab.
     """
-    testset_path = Path(testset_path)
-    if testset_path.exists() and not neu_erstellen:
-        daten = json.loads(testset_path.read_text(encoding="utf-8"))
-        _validiere_testset(daten, testset_path)
-        return daten, False
-
     alle_chunks = lade_alle_qdrant_chunks(store, collection_name)
     if not alle_chunks:
         raise RuntimeError(
@@ -127,17 +130,20 @@ def lade_oder_erstelle_testset(
     rng = random.Random(random_seed)
     kandidaten = rng.sample(alle_chunks, k=anzahl)
 
+    # Embeddings der ausgewählten Chunks gebündelt berechnen (ein Vektorraum, L2-normalisiert).
+    chunk_vektoren = embedder.embed([chunk["chunk_text"] for chunk in kandidaten]).dense_vectors
+
     items: list[dict[str, Any]] = []
-    for index, chunk in enumerate(kandidaten, start=1):
+    for index, (chunk, vektor) in enumerate(zip(kandidaten, chunk_vektoren), start=1):
         print(f"[Testset {index}/{anzahl}] Erzeuge Frage ...", end=" ", flush=True)
         try:
             rohtext = frage_client.generate(
                 model=model_name,
-                prompt=_frage_prompt(chunk["chunk_text"]),
+                prompt=frage_prompt(chunk["chunk_text"]),
                 temperature=0.0,
                 max_tokens=72,
             )
-            frage = _saeubere_frage(rohtext)
+            frage = saeubere_frage(rohtext)
         except Exception as exc:
             raise RuntimeError(
                 f"Fragegenerierung für Testfall {index} fehlgeschlagen: {exc}"
@@ -145,39 +151,63 @@ def lade_oder_erstelle_testset(
         if len(frage) < 10:
             raise RuntimeError(f"Testfall {index} lieferte keine gültige Frage.")
 
-        item = {"id": f"rag_eval_{index:03d}", "question": frage, **chunk}
-        items.append(item)
+        items.append(
+            {
+                "id": f"rag_eval_{index:03d}",
+                "question": frage,
+                "embedding": vektor,
+                **chunk,
+            }
+        )
         print(frage)
 
-    daten = {
+    return {
         "schema_version": TESTSET_SCHEMA_VERSION,
         "created_at": datetime.datetime.now().isoformat(timespec="seconds"),
         "collection_name": collection_name,
         "generator_model": model_name,
+        "embedding_dim": len(chunk_vektoren[0]) if chunk_vektoren else 0,
         "random_seed": random_seed,
         "qdrant_chunks_total": len(alle_chunks),
         "selection": "random.sample über alle texttragenden Punkte der Collection",
         "n_items": len(items),
         "items": items,
     }
+
+
+def speichere_testset(daten: dict[str, Any], testset_path: Path) -> None:
+    """Schreibt das Testset atomar (über eine temporäre Datei)."""
+    testset_path = Path(testset_path)
     testset_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = testset_path.with_suffix(testset_path.suffix + ".tmp")
     tmp_path.write_text(json.dumps(daten, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp_path.replace(testset_path)
-    return daten, True
 
 
-def _validiere_testset(daten: dict[str, Any], path: Path) -> None:
+def lade_testset(testset_path: Path) -> dict[str, Any]:
+    """Lädt und validiert ein zuvor erstelltes Testset."""
+    testset_path = Path(testset_path)
+    if not testset_path.exists():
+        raise FileNotFoundError(
+            f"Testset {testset_path} fehlt. Bitte zuerst create_testset.py ausführen."
+        )
+    daten = json.loads(testset_path.read_text(encoding="utf-8"))
     if daten.get("schema_version") != TESTSET_SCHEMA_VERSION:
-        raise ValueError(f"Unbekannte Testset-Version in {path}.")
+        raise ValueError(
+            f"Testset {testset_path} hat Schema-Version {daten.get('schema_version')}, "
+            f"erwartet wird {TESTSET_SCHEMA_VERSION}. Bitte mit create_testset.py neu erzeugen."
+        )
     items = daten.get("items")
     if not isinstance(items, list) or not items:
-        raise ValueError(f"Testset {path} enthält keine Fälle.")
+        raise ValueError(f"Testset {testset_path} enthält keine Fälle.")
     for index, item in enumerate(items, start=1):
         if not str(item.get("question") or "").strip():
-            raise ValueError(f"Testset {path}: Frage in Fall {index} fehlt.")
+            raise ValueError(f"Testset {testset_path}: Frage in Fall {index} fehlt.")
         if not str(item.get("chunk_text") or "").strip():
-            raise ValueError(f"Testset {path}: Chunk in Fall {index} fehlt.")
+            raise ValueError(f"Testset {testset_path}: Chunk in Fall {index} fehlt.")
+        if not isinstance(item.get("embedding"), list) or not item["embedding"]:
+            raise ValueError(f"Testset {testset_path}: Embedding in Fall {index} fehlt.")
+    return daten
 
 
 def rufe_retriever_auf(retriever, frage: str, cad_metadata: dict[str, Any]):
