@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-06-25T19:21:24",
+  "collection_name": "knowledge_base",
+  "generator_model": "llama3.2:3b",
+  "random_seed": 42,
+  "qdrant_chunks_total": 478,
+  "selection": "random.sample über alle texttragenden Punkte der Collection",
+  "n_items": 4,
+  "items": [
+    {
+      "id": "rag_eval_001",
+      "question": "Was ist der neue Stufenfaktor für die Zweiflanken-Wälzprüfung und wie wird er im Vergleich zur alten Toleranz abgewogen?",
+      "point_id": "6580275968304246595",
+      "chunk_text": "DIN ISO 1328-2:2021-09 \n19 \nAnhang C \n(informativ) \n \nGründe für die Änderung der Zweiflanken-Wälztoleranzen \nC.1 Allgemeines \nDiese Ausgabe des Dokuments hat neue Toleranzgleichungen. Die Gründe für die Änderungen sind folgende: \n— der große Anstieg der Toleranzen der Zweiflanken-Wälzprüfung mit der Zahnradgröße passt weder \nzum Herstellaufwand noch zu den Erfordernissen typischer Zahnradanwendungen; \n— der Stufenfaktor √2 von einer Klasse zur nächsten ist bei großen Toleranzen überhöht; \n— die Wälzabweichungstoleranzen über eine begrenzte Anzahl von Zähnen werden benötigt; \n— Zahnsegmente waren zuvor nicht explizit enthalten; \n— die alten Gleichungen für die Toleranzen des Zweiflanken-Wälzsprungs passen nicht gut zu den \nToleranzen für die Zweiflanken-Wälzabweichung, insbesondere bei kleinen Zähnezahlen. C.2 Zahnsegmente \nDie Gleichungen in ISO 1328-2:1997 können nicht auf Zahnsegmente angewandt werden, insbesondere nicht \nbei Segmenten mit wenigen Zähnen im Vergleich zum Vollrad. Die neue Gleichung gilt für \nSegmentverzahnungen und erweitert damit den Anwendungsbereich. C.3 Toleranzen für den Zweiflanken-Wälzsprung \nDie vorgeschlagenen Toleranzen für den Zweiflanken-Wälzsprung wurden an die Toleranzen der \nZweiflanken-Wälzabweichung angepasst. Die neuen Toleranzgleichungen führen bei einem Zahnrad mit nur \neinem Zahn zur selben Toleranz für die Zweiflanken-Wälzabweichung und den Zweiflanken-Wälzsprung. C.4 Stufenfaktor \nBei der Zweiflanken-Wälzprüfung von Zahnrädern mit großen Toleranzen ergibt der Faktor √2 einen Sprung \nvon 41,4 % in der Toleranz. Dies ist zu groß für eine wirtschaftliche Fertigung und für die korrekte Funktion \ndes Werkstücks. Das ist insbesondere von Bedeutung für Zahnräder geringer Qualität. Zur Verdeutlichung soll ein Zahnrad betrachtet werden, das bei einem √2 Stufensprung eine Toleranz von \n100 µm oder 141 µm haben kann. Kann der Herstellprozess nur eine Toleranz von 110 µm für die \nZweiflanken-Wälzabweichung einhalten, so kann die eine Toleranzklasse nicht erreicht werden und die \nandere bedeutet eine extreme Toleranz. Der neue Stufenfaktor von 1,19 ergibt eine Toleranz von 119 µm, \nwas angemessen ist. C.5 Toleranz der Zweiflanken-Wälzprüfung über k Zähne \nAnhang B enthält eine optionale Spezifikation für die Zweiflanken-Wälztoleranz über eine festgelegte Anzahl \nvon k Zähnen. Dies ist analog zur Toleranz für die Teilungsspannen-Abweichung in ISO 1328-1:2013, \nAnhang D. Konstrukteure können diese optionale Spezifikation verwenden, insbesondere wenn große \nAbweichungen in einem Sektor des Zahnrades Probleme bei der Funktion ergeben, auch wenn sie innerhalb \nder Toleranz für die Zweiflanken-Wälzabweichung für das Gesamtzahnrad liegen. Diese Toleranz wird oft \nbei Anwendungen angegeben, bei denen Geräusch und Schwingungen kritisch sind. Datum / Uhrzeit des Ausdrucks: 2026-05-20, 14:55:46\nFirmenname: Karlsruher Institut für Technologie (KIT)\nBenutzername: ip-user\nPrinted copies are uncontrolled",
+      "source_path": "/Users/maxhammerstein/Projects/KI-Copilot für Verzahnungswissen/storage/uploads/20260616_110400_cb862b7da9164d9dbe301dcaa601c219.pdf",
+      "source_name": "DIN ISO 1328 ISO-Toleranzsystem pt.2.pdf",
+      "page_number": 19,
+      "doc_hash": "16c2a8ad66027bc91b58b5c082698e04bd2861f38ffb7e07a637c2edc9d530b0",
+      "position": 19
+    },
+    {
+      "id": "rag_eval_002",
+      "question": "Wie wird Electric erosion durch den Durchgang eines kleinen elektrischen Stroms verursacht?",
+      "point_id": "1253295713762497752",
+      "chunk_text": "ISO 10825:1995(E/F) \n18 \n1.5 Electric erosion \nThe discharge of electric arcs or sparks between \nmating flanks produces numerous small, smooth \nedged craters in gear teeth. Occasionally, larger burned areas exhibiting tem-\nper colours at their margins are to be found. Electric erosion due to the passage of a small \nelectric current. \n©ISO \n1.5 Piqures par etincelage \nPetits crateres aux bords emousses produits par \ndes decharges d'arcs electriques entre les flancs \nde dents conjugues en cours d'engrenement. Occasionnellement, on peut trouver des zones \nbrOIE~es plus vastes, dont le pourtour est irise. Piqüres par etincelage dues a un passage de \ncourant de faible intensite, \nDatum / Uhrzeit des Ausdrucks: 2026-05-20, 16:36:41\nFirmenname: Karlsruher Institut für Technologie (KIT)\nBenutzername: ip-user\nPrinted copies are uncontrolled\nNachfolgedokument: ISO 10825-1 (2022-05) (IX30568793) | ISO/TR 10825-2 (2022-10) (IX30570078)\nzurückgezogen - withdrawn",
+      "source_path": "/Users/maxhammerstein/Projects/KI-Copilot für Verzahnungswissen/storage/uploads/20260616_110826_1d383a15c2d44d26980c18d79a19368a.pdf",
+      "source_name": "ISO 10825_1995-08-00_ML_2839045.pdf",
+      "page_number": 26,
+      "doc_hash": "464d4c4a55c887f806da64fa542548e921384992cfb0d6e83cecb2559ddb9bbf",
+      "position": 25
+    },
+    {
+      "id": "rag_eval_003",
+      "question": "Was ist die Formel zur Berechnung der minimal zulässigen Zahndickensehne, die den Unterschied zwischen maximaler und minimaler Sehnenlängen berücksichtigt?",
+      "point_id": "296859301123659911",
+      "chunk_text": "DIN ISO 21771:2014-08 \n81 \nDie minimale Zahndicke ist wichtig für ein geringes Flankenspiel. In diesem Fall muss die wirksame \nRundlaufabweichung vom Durchmesser dy abgezogen werden. Zusätzlich sollte die Messung auf den \nminimalen Kopfkreisdurchmesser bezogen werden. Damit erhält man für die Berechnung folgenden \nDurchmesser: \n(\n)\ny\nF\ny\nrc\na.max\na.min\nd\nd\nF\nd\nd\n−\n=\n−\n−\n−\n \n(A.33) \nDamit man dieselbe Sehnenkopfhöhe für die minimal zulässige Zahndickensehne verwenden kann, enthält \ndie Gleichung für scy.min den Ausdruck Δs, der den Unterschied der Bogenhöhen der maximalen und \nminimalen Sehnenlängen berücksichtigt. Daraus ergibt sich als korrigierter Wert der minimalen \nZahndickensehne:  \n(\n)\n(\n)\n(\n)\n(\n)\n2\n2\ny\nF\ny\nF n.min\ncy.min\ny\nF\ny\nF\ny\nF n.min\ny\nF\ncos\nsin(\n)\nsin\ns\ns\ns\nd\ns\nd\nβ\nβ\n−\n−\n−\n−\n−\n−\n\n\n\n\n\n\n\n\n=\n+\n−Δ\n\n\n\n\n\n\n\n\n\n\n\n\n \n(A.34) \n(\n)\nmin\nmax\nyn\n2\ntan\ns\nh\nh\nα\nΔ ≈\nΔ\n−Δ\n \nyn\ny\ny\ny\ncos\n1 cos\n2\ns\nd\nh\nd\nβ\n\n\n\n\n\n\nΔ =\n−\n\n\n\n\n\n\n\n\n\n\n \n(\n)\n(\n)\ny\nF\ny\nF\ny\nF nmin\ny\nF nmax\ny\nF\ny\nF\nyn\ny\nF\ny\nF\ncos\ncos\n1\ncos\n1\ncos\ntan\ns\ns\ns\nd\nd\nd\nd\nβ\nβ\nα\n−\n+\n−\n+\n−\n+\n−\n+\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nΔ ≈\n−\n−\n−\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n \n(A.35) \nDie Zahndickensehne kann dann mit den Grenzen scy.max und scy.min angegeben werden, wobei beide bei hccy \ngelten. Wie man im Bild A.5 sehen kann, ist die zulässige Spanne der gemessenen Zahndicken kleiner als die \nSpanne der wirksamen Zahndicken, welche aus den Fertigungstoleranzen resultieren. Zur Verdeutlichung \nwurde die Krümmung der Bögen im Bild A.5 stark überhöht. Auch die Rundlaufabweichung wurde vergrößert \ndargestellt, damit die Bögen einen deutlichen Abstand erhalten. Nicht überhöht wurde die Tatsache, dass die \nwirksame Zahndicke deutlich größer oder kleiner sein kann als die tatsächlich auftretende Zahndicke. Für die Korrekturen der maximal und minimal zulässigen Zahndickensehne siehe Bilder A.6 und A.7. Datum / Uhrzeit des Ausdrucks: 2026-05-20, 16:41:09\nFirmenname: Karlsruher Institut für Technologie (KIT)\nBenutzername: ip-user\nPrinted copies are uncontrolled",
+      "source_path": "/Users/maxhammerstein/Projects/KI-Copilot für Verzahnungswissen/storage/uploads/20260616_110707_77160ecb150b4045ba36e103bc3de083.pdf",
+      "source_name": "DIN ISO 21771_2014-08-00_DE_2144663.pdf",
+      "page_number": 81,
+      "doc_hash": "8ea95cbc93cad020b73b97caaf71fe8302002e69dfad8d578b738b82a38a46de",
+      "position": 74
+    },
+    {
+      "id": "rag_eval_004",
+      "question": "Was bedeutet die Nummerierung der Zähne in einer bestimmten Richtung bei Zylinderrädern?",
+      "point_id": "7464883098473772868",
+      "chunk_text": "DIN ISO 21771:2014-08 \n20 \n4.1.6 \nZahnnummer \nZum Nummerieren der Zähne sind auf einer in einer vereinbarten Blickrichtung betrachteten Stirnfläche eines \nRades (Bezugsstirnfläche) die Bezeichnungen Zahn 1, Zahn 2 usw. so festzulegen, dass die Zähne (im \nDrehsinn des Uhrzeigers) aufsteigend beziffert sind. Bezeichnet man einen betrachteten Zahn mit dem \nBuchstaben N trägt der in Zählrichtung folgende Zahn die Bezeichnung N + 1, der in Zählrichtung \nzurückliegende Zahn wird mit N − 1 bezeichnet. In Zählrichtung folgt bei Zylinderrädern auf den Zahn Nr. z der \nZahn 1, siehe Bild 1. Bild 1 — Nummerierung der Zähne und Lücken in der Bezugsstirnfläche \n4.1.7 \nKopf- und Fußfläche \n4.1.7.1 \nKopffläche \nDie Kopffläche eines Zahnes ist die äußerste (bei Innenverzahnungen innerste), zum Teilzylinder der \nVerzahnung koaxiale Begrenzungsfläche des Zahnes, siehe Bild 2. 4.1.7.2 \nZahnlückengrund \nDer Zahnlückengrund ist die innerste (bei Innenverzahnungen äußerste), zum Teilzylinder der Verzahnung \nkoaxiale Begrenzungsfläche der Zahnlücke, siehe Bild 2. 4.1.8 \nZahnflanken und Flankenteile \n4.1.8.1 \nZahnflanke \nZahnflanken sind diejenigen Teile der Oberfläche eines Zahnes, die sich zwischen der Kopffläche und dem \nZahnlückengrund befinden, siehe Bild 2. 4.1.8.2 \nRechtsflanke, Linksflanke \nRechtsflanke (bzw. Linksflanke) ist diejenige Zahnflanke, die ein Beobachter mit Blickrichtung auf die \nBezugsstirnfläche an einem nach oben gerichteten Zahn an dessen rechter (bzw. linker) Seite sieht. Diese \nDefinition gilt sowohl für außenverzahnte als auch für innenverzahnte Räder, siehe Bild 2. Bestimmungsgrößen an Rechtsflanken werden mit dem Index R und an Linksflanken mit dem Index L \ngekennzeichnet. Datum / Uhrzeit des Ausdrucks: 2026-05-20, 16:41:09\nFirmenname: Karlsruher Institut für Technologie (KIT)\nBenutzername: ip-user\nPrinted copies are uncontrolled",
+      "source_path": "/Users/maxhammerstein/Projects/KI-Copilot für Verzahnungswissen/storage/uploads/20260616_110707_77160ecb150b4045ba36e103bc3de083.pdf",
+      "source_name": "DIN ISO 21771_2014-08-00_DE_2144663.pdf",
+      "page_number": 20,
+      "doc_hash": "8ea95cbc93cad020b73b97caaf71fe8302002e69dfad8d578b738b82a38a46de",
+      "position": 15
+    }
+  ]
+}
