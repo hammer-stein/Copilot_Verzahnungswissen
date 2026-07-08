@@ -108,11 +108,6 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
 
     # 3. Chunker – SemanticChunker braucht den Embedder für Kosinusähnlichkeit
     chunker: Chunker
-    
-    # --- HIER IST UNSER HACK: Wir zwingen das System auf den reparierten Tabellen-Chunker ---
-    config.chunker.implementation = "recursive"
-    # ------------------------------------------------------------------------------------------
-
     if config.chunker.implementation == "semantic":
         chunker = SemanticChunker(
             embedder=embedder,  # geteilte Instanz!
@@ -170,10 +165,13 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
         store=vector_store,
         top_k=config.retriever.top_k,
         min_similarity=config.retriever.min_similarity,
+        table_min_similarity=config.retriever.table_min_similarity,
         use_hybrid=config.retriever.use_hybrid,
         hybrid_dense_weight=config.retriever.hybrid_dense_weight,
         hybrid_sparse_weight=config.retriever.hybrid_sparse_weight,
         candidate_multiplier=config.retriever.candidate_multiplier,
+        aggregate_max_chunks=config.retriever.aggregate_max_chunks,
+        auto_table_context_rows=config.retriever.auto_table_context_rows,
     )
 
     # 7. Antwortgenerator – HTTP-Verbindung zu Ollama

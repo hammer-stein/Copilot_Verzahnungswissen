@@ -1,38 +1,86 @@
-import traceback
-from app.core.types import RawDocument, Chunk
+"""
+chunker_recursive.py – Regelbasierter Chunker nach Token-Limit.
+
+Implementiert das Chunker-Protokoll als schnelle Alternative zum SemanticChunker.
+Sätze werden sequentiell zusammengefügt bis das Token-Limit erreicht ist –
+ohne Embedding-Aufrufe, deterministisch und ressourcenschonend.
+
+Tabellen-Dokumente (RawDocument.doc_kind == "table", z.B. aus dem TabularLoader)
+werden zeilenweise gechunkt: jede Zeile ist ein atomarer Datensatz und darf
+weder mit Nachbarzeilen verschmolzen noch am Token-Limit zerschnitten werden.
+"""
+
+from __future__ import annotations
+
+from app.core.types import Chunk, RawDocument
+from app.implementations.text_split import approx_tokens, chunk_table_rows, split_sentences
+
 
 class RecursiveTextChunker:
-    def __init__(self, *args, **kwargs):
-        pass
-        
-    def chunk(self, doc: RawDocument) -> list[Chunk]:
-        print("🕵️ CHUNKER SPION 1: Chunker wurde erfolgreich aufgerufen!")
-        chunks = []
-        
-        try:
-            for page in doc.pages:
-                lines = page.text.splitlines()
-                print(f"🕵️ CHUNKER SPION 2: Versuche {len(lines)} Zeilen umzuwandeln...")
-                
-                for i, line in enumerate(lines):
-                    if line.strip(): 
-                        try:
-                            # Hier passiert höchstwahrscheinlich der stille Crash!
-                            chunk_obj = Chunk(
-                                text=line,
-                                source_path=doc.source_path,
-                                page_number=page.page_number,
-                                position=i,
-                                doc_hash=doc.doc_hash
-                            )
-                            chunks.append(chunk_obj)
-                        except Exception as inner_e:
-                            print(f"\n🧨 CRASH BEIM CHUNK-BAUEN (Zeile {i}): {repr(inner_e)}")
-                            print("🚨 VERDACHT: Die Parameter passen nicht zu deiner types.py!\n")
-                            return [] # Wir brechen hier ab, damit du den Fehler im Terminal siehst!
-                            
-            print(f"🕵️ CHUNKER SPION 3: {len(chunks)} Chunks erfolgreich gebaut!")
-        except Exception as e:
-            print(f"\n🧨 KRITISCHER CHUNKER FEHLER:\n{traceback.format_exc()}\n")
-            
+    """Teilt Dokumente regelbasiert nach Token-Limit in Chunks auf – kein Embedding-Aufruf nötig."""
+
+    def __init__(
+        self,
+        *,
+        min_chunk_tokens: int,
+        max_chunk_tokens: int,
+        overlap_sentences: int,
+    ) -> None:
+        """
+        min_chunk_tokens verhindert winzige Chunks aus leeren Seiten.
+        overlap_sentences sorgt für Kontextkontinuität an Chunk-Grenzen.
+        """
+        self.min_chunk_tokens = min_chunk_tokens
+        self.max_chunk_tokens = max_chunk_tokens
+        self.overlap_sentences = max(0, overlap_sentences)
+
+    def chunk(self, document: RawDocument) -> list[Chunk]:
+        """
+        Verarbeitet jede Seite seitenweise: Sätze sammeln bis Token-Limit →
+        Chunk speichern → mit Overlap weitermachen.
+        position ist dokumentweit monoton steigend.
+        """
+        if document.doc_kind == "table":
+            return chunk_table_rows(document)
+
+        chunks: list[Chunk] = []
+        pos = 0
+
+        for page in document.pages:
+            sentences = split_sentences(page.text)
+            if not sentences:
+                continue
+
+            start = 0
+            while start < len(sentences):
+                cur, cur_tokens, i = [], 0, start
+
+                while i < len(sentences):
+                    s_tokens = approx_tokens(sentences[i])
+                    # ersten Satz immer hinzufügen (auch wenn er allein das Limit überschreitet)
+                    if cur and (cur_tokens + s_tokens) > self.max_chunk_tokens:
+                        break
+                    cur.append(sentences[i])
+                    cur_tokens += s_tokens
+                    i += 1
+
+                text = " ".join(cur).strip()
+                if text and cur_tokens >= self.min_chunk_tokens:
+                    pos += 1
+                    chunks.append(
+                        Chunk(
+                            text=text,
+                            source_path=document.source_path,
+                            page_number=page.page_number,
+                            position=pos,
+                            doc_hash=document.doc_hash,
+                        )
+                    )
+
+                # Schutz vor Endlosschleife wenn ein Satz länger als max_chunk_tokens ist
+                if i <= start:
+                    start += 1
+                else:
+                    start = max(i - self.overlap_sentences, start + 1)
+
         return chunks

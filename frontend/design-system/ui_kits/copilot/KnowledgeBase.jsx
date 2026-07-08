@@ -85,9 +85,9 @@ function KnowledgeBase({
   };
 
   const uploadFiles = async (files, preserveFolders = false) => {
-    const allowed = Array.from(files || []).filter((f) => /\.(pdf|csv)$/i.test(f.name));
+    const allowed = Array.from(files || []).filter((f) => /\.(pdf|csv|xlsx|xls)$/i.test(f.name));
     if (allowed.length === 0) {
-      setNotice('Keine unterstützten Dateien (PDF, CSV) gefunden.');
+      setNotice('Keine unterstützten Dateien (PDF, CSV, Excel) gefunden.');
       return;
     }
     setNotice(`${allowed.length.toLocaleString('de-DE')} Datei(en) werden hochgeladen...`);
@@ -220,11 +220,11 @@ function KnowledgeBase({
               </div>
             </div>
             <div className="vc-library__actions">
-              <input ref={fileRef} type="file" accept=".pdf,.csv" multiple style={{ display: 'none' }} onChange={async (e) => {
+              <input ref={fileRef} type="file" accept=".pdf,.csv,.xlsx,.xls" multiple style={{ display: 'none' }} onChange={async (e) => {
                 await uploadFiles(e.target.files, false);
                 e.target.value = '';
               }} />
-              <input ref={folderRef} type="file" accept=".pdf,.csv" multiple webkitdirectory="" directory="" style={{ display: 'none' }} onChange={async (e) => {
+              <input ref={folderRef} type="file" accept=".pdf,.csv,.xlsx,.xls" multiple webkitdirectory="" directory="" style={{ display: 'none' }} onChange={async (e) => {
                 await uploadFiles(e.target.files, true);
                 e.target.value = '';
               }} />

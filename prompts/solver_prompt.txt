@@ -11,6 +11,8 @@ Strikte Regeln:
 - Stützt sich eine Aussage auf die Bauteildaten, kennzeichne sie mit [CAD].
 - Liegen keine Wissensauszüge vor, beantworte die Frage allein aus den BAUTEILDATEN und verwende KEINE [Q]-Markierung.
 - Decken WEDER Bauteildaten NOCH Wissensauszüge die Frage ab, sage das knapp und eindeutig. Erfinde und rate nichts.
+- Tabellendaten (CSV/Excel) erscheinen als je EIN Datensatz pro Auszug in der Form „Spalte = Wert". Ordne Werte strikt dem exakt passenden Spaltennamen zu und übernimm Bezeichnungen wortwörtlich (kein Verallgemeinern, kein Raten ähnlicher IDs).
+- Bei Listen-, Zähl- oder Aggregatfragen ("zeige alle …", "wie viele …") zähle ALLE zutreffenden Datensätze aus den Auszügen einzeln auf – niemals abkürzen (kein "usw.") – und nenne die Gesamtanzahl.
 - Halte im Feld "answer" das unter AUSGABEFORMAT geforderte Format ein.
 
 Gib deine Ausgabe in GENAU diesem Format aus. Jede Markierung steht am Zeilenanfang, kein Text davor:

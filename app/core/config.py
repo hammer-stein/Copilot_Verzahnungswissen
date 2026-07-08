@@ -75,13 +75,26 @@ class RetrieverConfig(BaseModel):
     Steuert den Hybrid-Retriever: Dense-Vektorsuche, optional kombiniert mit
     lexikalischen Sparse-Scores (use_hybrid). candidate_multiplier bestimmt,
     wie viele Dense-Kandidaten vor dem Sparse-Reranking geholt werden.
+
+    Tabellen-Routing (Split Search):
+    - table_min_similarity: eigener, niedrigerer Threshold NUR für Chunks aus
+      Tabellen-Dokumenten (doc_kind == "table"); min_similarity gilt weiter
+      unverändert für PDF-/Textchunks.
+    - aggregate_max_chunks: Deckel beim Voll-Laden einer Tabelle, wenn die Frage
+      Listen-Signalwörter enthält ("zeige alle …").
+    - auto_table_context_rows: ergebnisgetriebene Route – stammt die Mehrheit der
+      Top-Treffer aus derselben Tabelle und hat diese höchstens so viele Zeilen,
+      wird sie auch OHNE Signalwort komplett geladen (0 = deaktiviert).
     """
     top_k: int = 5
     min_similarity: float = 0.5
+    table_min_similarity: float = 0.35
     use_hybrid: bool = True
     hybrid_dense_weight: float = 0.7
     hybrid_sparse_weight: float = 0.3
     candidate_multiplier: int = Field(default=8, ge=1)
+    aggregate_max_chunks: int = Field(default=150, ge=1)
+    auto_table_context_rows: int = Field(default=40, ge=0)
 
 
 class AnswerGeneratorConfig(BaseModel):

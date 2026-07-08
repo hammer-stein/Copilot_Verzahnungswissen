@@ -49,6 +49,7 @@ const STEP_STATUS_LABELS = {
   korrigiert: 'korrigiert',
   freigegeben: 'freigegeben',
   fallback: 'Fallback',
+  error: 'Fehler',
 };
 
 /* Prüfbarer Lösungsweg: zeigt die Einzelschritte des Multi-Agenten-Flusses
@@ -122,10 +123,11 @@ function ProcessSteps({ steps }) {
         const isRunning = s.status === 'running';
         const isDone = s.status === 'done' || s.status === 'freigegeben' || s.status === 'korrigiert';
         const isSkipped = s.status === 'skipped';
+        const isError = s.status === 'error';
         return (
           <div key={i} className={'vc-process__row vc-process__row--' + (s.status || 'pending')}>
             <span className="vc-process__state">
-              {isRunning ? <Spinner /> : <Icon name={isDone ? 'check' : (isSkipped ? 'minus' : 'circle')} size={13} />}
+              {isRunning ? <Spinner /> : <Icon name={isError ? 'alert-triangle' : (isDone ? 'check' : (isSkipped ? 'minus' : 'circle'))} size={13} />}
             </span>
             <span className="vc-process__main">
               <span className="vc-process__title">{s.title || s.label}</span>

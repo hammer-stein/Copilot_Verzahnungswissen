@@ -12,7 +12,7 @@ import math
 
 from app.core.interfaces import Embedder
 from app.core.types import Chunk, RawDocument
-from app.implementations.text_split import approx_tokens, split_sentences
+from app.implementations.text_split import approx_tokens, chunk_table_rows, split_sentences
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -55,6 +55,11 @@ class SemanticChunker:
         Segmente packen → Chunk-Objekte erzeugen.
         Position ist dokumentweit monoton steigend (nicht seitenweise).
         """
+        if document.doc_kind == "table":
+            # Tabellen zeilenweise chunken – semantisches Verschmelzen würde
+            # Datensätze vermischen und kurze Zeilen am min_chunk_tokens-Filter verlieren.
+            return chunk_table_rows(document)
+
         chunks: list[Chunk] = []
         pos = 0  # dokumentweiter Zähler für stabile Qdrant-Punkt-IDs
 

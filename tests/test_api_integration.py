@@ -28,6 +28,9 @@ class _FakeRetriever:
 
 class _FakeAnswerGenerator:
     def generate(self, *, question, chunks, cad_metadata, answer_format="standard"):
+        if question.startswith("FAIL"):
+            # Simulierter LLM-Ausfall für den Fehlerpfad-Test (z.B. Ollama nicht erreichbar)
+            raise RuntimeError("Ollama nicht erreichbar (Testfehler)")
         _LAST_CALL["answer_format"] = answer_format
         _LAST_CALL["cad_metadata"] = cad_metadata
         return {
@@ -142,6 +145,31 @@ def test_ask_defaults_to_standard_format():
     assert _LAST_CALL["answer_format"] == "standard"
 
 
+def test_cad_from_csv_endpoint_returns_gear_parameters():
+    csv = (
+        "Bauteil_ID,Bezeichnung,Verzahnungstyp,Modul_mm,Zaehnezahl,Werkstoff\n"
+        "G-010,Stirnrad Testrad,Stirnrad,2.5,32,16MnCr5\n"
+    ).encode("utf-8")
+    r = client.post("/cad/from-csv", files={"file": ("zahnrad.csv", csv, "text/csv")})
+    assert r.status_code == 200
+    body = r.json()
+    # Formgleich mit /cad/analyze: verschachtelte GearParameters-Struktur, direkt als cad_metadata nutzbar.
+    assert body["filename"] == "zahnrad.csv"
+    assert body["gear_type"]["value"] == "spur"
+    assert body["tooth_profile"]["module_mm"]["value"] == 2.5
+    assert body["tooth_profile"]["num_teeth"]["value"] == 32
+    assert body["material_context"]["material"] == "16MnCr5"
+
+
+def test_cad_from_csv_rejects_wrong_extension_and_non_gear_csv():
+    r = client.post("/cad/from-csv", files={"file": ("part.step", b"ISO-10303-21;", "application/step")})
+    assert r.status_code == 400
+
+    r = client.post("/cad/from-csv", files={"file": ("adressen.csv", b"Name,Ort\nMax,Ulm\n", "text/csv")})
+    assert r.status_code == 400
+    assert "Verzahnungs-Spalten" in r.json()["detail"]
+
+
 def test_ask_status_endpoint_tracks_request_id():
     request_id = "pytest-status-request"
     r = client.post("/ask", json={"questions": ["Status?"], "request_id": request_id})
@@ -153,3 +181,21 @@ def test_ask_status_endpoint_tracks_request_id():
     assert body["request_id"] == request_id
     assert body["status"] == "done"
     assert [step["key"] for step in body["steps"]][:2] == ["embedding", "search"]
+
+
+def test_ask_failure_marks_failing_step_with_error_message():
+    """Nachvollziehbarkeit: Beim Pipeline-Fehler zeigt der Prozessstatus, WELCHER
+    Schritt mit WELCHER Meldung abgebrochen ist (Frontend rendert ihn rot)."""
+    request_id = "pytest-fail-request"
+    r = client.post("/ask", json={"questions": ["FAIL bitte"], "request_id": request_id})
+    assert r.status_code == 500
+    assert "Ollama nicht erreichbar" in r.json()["detail"]
+
+    s = client.get(f"/ask/status/{request_id}")
+    body = s.json()
+    assert body["status"] == "error"
+    failed = [step for step in body["steps"] if step["status"] == "error"]
+    assert len(failed) == 1
+    assert failed[0]["key"] == "answer_generation"  # Fehlerort ist der Generierungs-Schritt
+    assert "Antwortgenerierung fehlgeschlagen" in failed[0]["content"]
+    assert "Ollama nicht erreichbar" in failed[0]["content"]

@@ -66,6 +66,8 @@ class VectorStore(Protocol):
         hybrid_sparse_weight: float = 0.3,
     ) -> list[SearchResult]: ...
 
+    def scroll_by_doc_hash(self, doc_hash: str, *, limit: int) -> list[SearchResult]: ...
+
     def delete_by_doc_hash(self, doc_hash: str) -> None: ...
 
     def set_document_folder(self, doc_hash: str, folder: str) -> None: ...
@@ -75,7 +77,10 @@ class VectorStore(Protocol):
     def list_documents(self) -> list[DocumentInfo]: ...
 
 
-ProgressCallback = Callable[[str], None]
+# Prozessereignis-Callback: cb(event) oder cb(event, detail). Der optionale
+# Detailtext (z.B. gefundene Dateien/Route des Retrievers) wird im GUI als
+# Schritt-Beschreibung angezeigt; Komponenten senden ihn defensiv (TypeError-Fallback).
+ProgressCallback = Callable[..., None]
 
 
 class Retriever(Protocol):

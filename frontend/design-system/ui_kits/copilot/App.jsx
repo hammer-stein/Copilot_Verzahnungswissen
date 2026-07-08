@@ -272,6 +272,11 @@ function processStepsFromBackend(steps) {
 const PDF_RE = /\.pdf$/i;
 const STEP_RE = /\.(step|stp|stp242|p21|iges|igs)$/i;
 const JSON_RE = /\.json$/i;
+/* CSV/Excel spielt zwei Rollen, entschieden über den Upload-Ort:
+   - Dokumentbibliothek (KnowledgeBase) → /upload → Wissensbasis (KNOWLEDGE_RE)
+   - Composer/Sidebar (Bauteil-Pfad)    → /cad/from-csv → cad_metadata (CSV_RE) */
+const CSV_RE = /\.(csv|xlsx|xls)$/i;
+const KNOWLEDGE_RE = /\.(pdf|csv|xlsx|xls)$/i;
 
 function relativeFolder(file) {
   const rel = file && file.webkitRelativePath ? String(file.webkitRelativePath) : '';
@@ -349,9 +354,11 @@ function App() {
 
   const openKb = () => { setKbOpen(true); refreshKb(); };
 
-  /* KB actions — each refreshes the list afterwards. */
+  /* KB actions — each refreshes the list afterwards.
+     Uploads aus der Dokumentbibliothek gehen IMMER in die Wissensbasis (/upload),
+     auch CSV/Excel — der Bauteildaten-Kanal läuft separat über uploadFile. */
   const kbUpload = async (files, folder, opts = {}) => {
-    const list = Array.from(files || []).filter((file) => PDF_RE.test(file.name));
+    const list = Array.from(files || []).filter((file) => KNOWLEDGE_RE.test(file.name));
     if (list.length === 0) return { uploaded: 0, failed: 0 };
     let uploaded = 0;
     let failed = 0;
@@ -362,11 +369,11 @@ function App() {
           ? joinFolder(folder, relativeFolder(file))
           : (folder || '');
         try {
-          await uploadFile(file, uploadFolder, { refresh: false, throwOnError: true });
+          await uploadKnowledgeFile(file, uploadFolder, { refresh: false, throwOnError: true });
           uploaded += 1;
         } catch (e) {
           failed += 1;
-          console.error('PDF-Upload fehlgeschlagen', file.name, e);
+          console.error('Dokument-Upload fehlgeschlagen', file.name, e);
         }
       }
     } finally {
@@ -486,6 +493,19 @@ function App() {
         review: ans.review || null,        // Gesamturteil des Prüf-Agenten
       });
     } catch (e) {
+      /* Nachvollziehbarkeit im Fehlerfall: den finalen Prozessstatus holen und die
+         Schritte (inkl. des rot markierten Fehler-Schritts) an die Fehlermeldung
+         hängen – so bleibt sichtbar, WO die Pipeline abgebrochen ist. */
+      let failSteps = [];
+      try {
+        const sr = await fetch(`${API}/ask/status/${encodeURIComponent(requestId)}`);
+        if (sr.ok) {
+          const sj = await sr.json();
+          failSteps = processStepsFromBackend((sj.steps || []).filter((s) => s.status && s.status !== 'pending'));
+        }
+      } catch (statusErr) {
+        console.debug('Prozessstatus nach Fehler nicht verfügbar', statusErr);
+      }
       appendMsg(chatId, {
         role: 'assistant',
         title: 'Fehler bei der Beantwortung',
@@ -495,6 +515,7 @@ function App() {
           </p>
         ),
         sources: [],
+        steps: failSteps,
       });
     } finally {
       if (pollTimer) window.clearInterval(pollTimer);
@@ -506,31 +527,59 @@ function App() {
   const goHome = () => { setActiveChat(null); setSidebarOpen(false); };
   const newChat = () => { setActiveChat(null); };
 
-  /* File upload from sidebar/composer.
+  /* Wissensbasis-Upload (PDF, CSV, Excel) → POST /upload (+ optionaler Zielordner).
+     Wird von der Dokumentbibliothek (kbUpload) und für PDFs aus dem Composer genutzt. */
+  const uploadKnowledgeFile = async (file, folder = '', options = {}) => {
+    const shouldRefresh = options.refresh !== false;
+    const fd = new FormData();
+    fd.append('file', file);
+    if (folder) fd.append('folder', folder);
+    try {
+      const r = await fetch(`${API}/upload`, { method: 'POST', body: fd });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) {
+        const detail = j && (j.detail || j.message) ? (j.detail || j.message) : `HTTP ${r.status}`;
+        throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      }
+      return j;
+    } catch (e) {
+      console.error('Dokument-Upload fehlgeschlagen', e);
+      if (options.throwOnError) throw e;
+    } finally {
+      if (shouldRefresh) refreshKnowledgeBase();
+    }
+  };
+
+  /* File upload from sidebar/composer (Bauteil-Pfad).
      - PDF  → /upload  (adds to the RAG knowledge base; optional target folder)
+     - CSV/Excel → /cad/from-csv (Verzahnungs-Parameter → cad_metadata for the active part)
      - JSON → parsed client-side as a GearParameters part → cad_metadata (test data)
      - STEP → /cad/analyze (CAD processor → cad_metadata for the active part) */
   const uploadFile = async (file, folder = '', options = {}) => {
     if (!file) return;
-    const shouldRefresh = options.refresh !== false;
 
     if (PDF_RE.test(file.name)) {
+      return uploadKnowledgeFile(file, folder, options);
+    }
+
+    /* CSV/Excel im Bauteil-Pfad → Verzahnungs-Parameter als aktives Bauteil laden. */
+    if (CSV_RE.test(file.name)) {
+      setActivePart({ name: file.name, status: 'indexing' });
+      setCadPreview(null);
       const fd = new FormData();
       fd.append('file', file);
-      if (folder) fd.append('folder', folder);
       try {
-        const r = await fetch(`${API}/upload`, { method: 'POST', body: fd });
+        const r = await fetch(`${API}/cad/from-csv`, { method: 'POST', body: fd });
         const j = await r.json().catch(() => null);
         if (!r.ok) {
-          const detail = j && (j.detail || j.message) ? (j.detail || j.message) : `HTTP ${r.status}`;
+          const detail = j && j.detail ? j.detail : `HTTP ${r.status}`;
           throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
         }
-        return j;
+        setCadMeta(j);
+        setActivePart({ name: file.name, status: 'ready' });
       } catch (e) {
-        console.error('PDF-Upload fehlgeschlagen', e);
-        if (options.throwOnError) throw e;
-      } finally {
-        if (shouldRefresh) refreshKnowledgeBase();
+        console.error('CSV-Bauteildaten konnten nicht geladen werden', e);
+        setActivePart({ name: file.name, status: 'error', error: String(e.message || e) });
       }
       return;
     }

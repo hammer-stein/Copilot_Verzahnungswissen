@@ -141,7 +141,11 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
                 "key": "search",
                 "agent": "retrieval",
                 "title": "Chunk-Suche",
-                "content": f"Vektorsuche mit Kosinus-Ähnlichkeit (Threshold {config.retriever.min_similarity:g}, top_k {config.retriever.top_k}).",
+                "content": (
+                    f"Vektorsuche mit Kosinus-Ähnlichkeit (Threshold {config.retriever.min_similarity:g}, "
+                    f"Tabellen {config.retriever.table_min_similarity:g}, top_k {config.retriever.top_k}; "
+                    "Listen-/Tabellenfragen laden die ganze Tabelle)."
+                ),
                 "status": "pending",
             },
             {
@@ -200,7 +204,9 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
                     break
 
     def _progress_for(request_id: Optional[str]):
-        def progress(event: str) -> None:
+        def progress(event: str, detail: Optional[str] = None) -> None:
+            """detail (optional) ersetzt den Schritt-Text – z.B. meldet der Retriever,
+            welche Dateien/Zeilen gefunden wurden und welche Route gewählt wurde."""
             mapping = {
                 "embedding_start": ("embedding", "running"),
                 "embedding_done": ("embedding", "done"),
@@ -217,8 +223,30 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
             }
             mapped = mapping.get(event)
             if mapped:
-                _update_process(request_id, *mapped)
+                _update_process(request_id, mapped[0], mapped[1], content=detail)
         return progress
+
+    def _fail_phase(request_id: Optional[str], phase_keys: tuple[str, ...], fallback_key: str, message: str) -> None:
+        """
+        Markiert beim Fehler den gerade laufenden Schritt der Phase als "error" und
+        schreibt die Fehlermeldung in den Schritt-Text – so ist im GUI nachvollziehbar,
+        WO die Pipeline abgebrochen ist. Läuft kein Schritt (z.B. Komponente ohne
+        Progress-Callback), wird der Fallback-Schritt der Phase markiert.
+        """
+        if not request_id:
+            return
+        with process_lock:
+            run = process_runs.get(request_id)
+            if not run:
+                return
+            steps = run.get("steps", [])
+            target = next(
+                (s for s in steps if s.get("key") in phase_keys and s.get("status") == "running"),
+                None,
+            ) or next((s for s in steps if s.get("key") == fallback_key), None)
+            if target is not None:
+                target["status"] = "error"
+                target["content"] = message
 
     def _finish_process(request_id: Optional[str], status: str) -> None:
         if not request_id:
@@ -462,6 +490,39 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         finally:
             dest.unlink(missing_ok=True)  # STEP-Datei nach Analyse wieder löschen
 
+    @app.post("/cad/from-csv")
+    async def cad_from_csv(file: UploadFile = File(...)):
+        """
+        Bauteildaten-Kanal für Tabellen: Nimmt eine CSV/Excel-Datei mit
+        Verzahnungs-Parametern entgegen und mappt sie auf die GearParameters-Struktur
+        (formgleich mit /cad/analyze). Das Ergebnis ist direkt als cad_metadata für
+        /ask verwendbar. Die Wissensbasis wird dabei NICHT verändert – dafür ist
+        POST /upload (Dokumentbibliothek) zuständig.
+        """
+        original_name = Path(file.filename or "").name
+        suffix = Path(original_name).suffix.lower()
+        if suffix not in (".csv", ".xlsx", ".xls"):
+            raise HTTPException(status_code=400, detail="Only .csv/.xlsx/.xls upload supported.")
+
+        tmp_name = f"{_utc_stamp()}_{uuid.uuid4().hex}{suffix}"
+        dest = uploads_dir / tmp_name
+        dest.write_bytes(await file.read())
+
+        try:
+            from app.implementations.csv_gear_mapper import map_tabular_to_gear_parameters
+
+            result = await asyncio.to_thread(map_tabular_to_gear_parameters, dest)
+            result["source_file"] = original_name or tmp_name
+            result["filename"] = original_name or tmp_name
+            return result
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.exception("csv_gear_mapping_failed file=%s", dest)
+            raise HTTPException(status_code=502, detail=f"CSV gear mapping failed: {e}")
+        finally:
+            dest.unlink(missing_ok=True)  # Tabellen-Datei nach dem Mapping wieder löschen
+
     @app.get("/ask/status/{request_id}")
     async def ask_status(request_id: str):
         """Live-Status einer laufenden /ask-Anfrage. Wird vom Frontend während der Generierung gepollt."""
@@ -490,7 +551,15 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
                     raise
                 return components.retriever.retrieve(question)
 
-        chunks = await asyncio.to_thread(_retrieve_with_optional_progress)
+        try:
+            chunks = await asyncio.to_thread(_retrieve_with_optional_progress)
+        except Exception as e:
+            # Fehlerort im Prozess-Panel sichtbar machen (Embedding- oder Suchphase).
+            _fail_phase(
+                request_id, ("embedding", "search"), "search",
+                f"Retrieval fehlgeschlagen – {type(e).__name__}: {e}",
+            )
+            raise
 
         def _generate_with_optional_progress() -> Answer:
             try:
@@ -511,7 +580,15 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
                     answer_format=answer_format,
                 )
 
-        answer = await asyncio.to_thread(_generate_with_optional_progress)
+        try:
+            answer = await asyncio.to_thread(_generate_with_optional_progress)
+        except Exception as e:
+            # Fehlerort im Prozess-Panel sichtbar machen (Generierung/Prüfung/Verbesserung).
+            _fail_phase(
+                request_id, ("answer_generation", "validation", "improvement"), "answer_generation",
+                f"Antwortgenerierung fehlgeschlagen – {type(e).__name__}: {e}",
+            )
+            raise
 
         # Die Detail-Schritte des Generators (Solver/Reviewer) werden NICHT separat unter den
         # Ablauf gehängt, sondern in den passenden Ablauf-Schritt eingeschmolzen: Erläuterung +

@@ -102,6 +102,7 @@ class QdrantStore:
                 # list_documents und set_document_folder sie ohne JSON-Parsing lesen/schreiben können.
                 "file_name": str(meta.get("file_name", "")),
                 "folder": str(meta.get("folder", "")),
+                "doc_kind": str(meta.get("doc_kind", "text")),  # "text" | "table" – für Aggregat-Routing
             }
             # Stabiler Integer-ID über Prozesse hinweg.
             digest = hashlib.sha256(f"{c.doc_hash}:{c.position}".encode("utf-8")).digest()
@@ -158,6 +159,45 @@ class QdrantStore:
                 )
             )
         return sorted(out, key=lambda r: r.score, reverse=True)
+
+    def scroll_by_doc_hash(self, doc_hash: str, *, limit: int) -> list[SearchResult]:
+        """
+        Lädt alle Chunks eines Dokuments (ohne Vektorsuche), sortiert nach position –
+        bei Tabellen-Dokumenten entspricht das der ursprünglichen Zeilenreihenfolge.
+        Grundlage für das Aggregat-Routing des Retrievers ("zeige alle …"), das bei
+        Listenfragen die ganze Tabelle statt nur top_k Treffer als Kontext lädt.
+        """
+        if not self._collection_exists():
+            return []
+
+        results: list[SearchResult] = []
+        offset = None  # Scroll-Cursor, None = Anfang
+        while len(results) < limit:
+            points, offset = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="doc_hash", match=MatchValue(value=doc_hash))]
+                ),
+                limit=min(256, limit - len(results)),
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for pt in points:
+                p = pt.payload or {}
+                results.append(
+                    SearchResult(
+                        chunk=_payload_to_chunk(p),
+                        metadata=_payload_to_metadata(p),
+                        dense_score=None,
+                        sparse_score=None,
+                        score=0.0,  # kein Suchscore – der Retriever übernimmt den Score des Seed-Treffers
+                    )
+                )
+            if offset is None:  # keine weiteren Seiten
+                break
+
+        return sorted(results, key=lambda r: r.chunk.position)[:limit]
 
     def delete_by_doc_hash(self, doc_hash: str) -> None:
         """Löscht alle Chunks eines Dokuments anhand des doc_hash (Mechanismus für DELETE /documents/{doc_hash})."""
@@ -264,7 +304,7 @@ def _payload_to_metadata(payload: dict[str, Any]) -> dict[str, Any]:
     braucht diese Information für sprechende Quellen statt technischer Upload-Pfade.
     """
     metadata = dict(payload.get("metadata") or {})
-    for key in ("file_name", "folder", "doc_hash", "source_path"):
+    for key in ("file_name", "folder", "doc_hash", "source_path", "doc_kind"):
         value = payload.get(key)
         if value not in (None, "") and not metadata.get(key):
             metadata[key] = value

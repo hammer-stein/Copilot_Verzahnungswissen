@@ -32,8 +32,8 @@ function Composer({ onSend, format, onFormat, formats, onUploadStep }) {
     <div className="vc-composer">
       <div className="vc-composer__box">
         <div className="vc-composer__row">
-          <input ref={fileRef} type="file" accept=".step,.stp,.stp242,.p21,.iges,.igs,.json,model/step,application/json" style={{ display: 'none' }} onChange={onFile} />
-          <button className="vc-composer__attach" title="CAD- / STEP- / JSON-Datei anhängen" onClick={pickFile}>
+          <input ref={fileRef} type="file" accept=".step,.stp,.stp242,.p21,.iges,.igs,.json,.csv,.xlsx,.xls,model/step,application/json,text/csv" style={{ display: 'none' }} onChange={onFile} />
+          <button className="vc-composer__attach" title="CAD- / STEP- / JSON- / CSV-Datei anhängen" onClick={pickFile}>
             <Icon name="plus" size={20} />
           </button>
           <textarea

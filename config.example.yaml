@@ -24,7 +24,7 @@ embedder:
   implementation: "bge_m3"
   model_name: "BAAI/bge-m3"
   device: "cpu"          # ÄNDERUNG: "cpu" | "cuda" | "mps"
-  use_sparse: false      # ÄNDERUNG: true nur bei aktivem Hybrid-Retrieval; danach Dokumente neu indexieren
+  use_sparse: true       # ÄNDERUNG: false nur ohne Hybrid-Retrieval; nach Umstellung Dokumente neu indexieren
   max_length: 8192
 
 # =============================================================================
@@ -78,18 +78,33 @@ vector_store:
 # min_similarity: Minimale Kosinus-Ähnlichkeit für Treffer (0.0–1.0)
 #   Reduzieren (z.B. 0.40) wenn zu wenige Treffer gefunden werden
 # use_hybrid: kombiniert Dense-Score mit lexikalischem Sparse-Score –
-#   benötigt embedder.use_sparse: true
+#   benötigt embedder.use_sparse: true. Der Sparse-Kanal liefert exakte
+#   Treffer für IDs (z.B. W-103), Normnummern und Werkstoffcodes.
+#   ACHTUNG: Nach Aktivierung müssen Dokumente neu indexiert werden.
 # candidate_multiplier: Anzahl Dense-Kandidaten = top_k * multiplier
 #   (nur bei Hybrid relevant, vor dem Sparse-Reranking)
+#
+# Tabellen-Routing (Split Search) – zwei Routen heben die starre top_k-Grenze auf:
+# table_min_similarity: eigener, niedrigerer Threshold NUR für Tabellenzeilen
+#   (doc_kind == "table"); Embeddings von Tabellendaten erzielen systembedingt
+#   niedrigere Scores als Fließtext. min_similarity gilt unverändert für PDFs.
+# aggregate_max_chunks: Route 1 (Signalwörter "zeige alle", "wie viele" …):
+#   die bestplatzierte Tabelle wird komplett geladen, gedeckelt auf diesen Wert.
+# auto_table_context_rows: Route 2 (ergebnisgetrieben, ohne Signalwort):
+#   stammt die Mehrheit der Top-Treffer aus derselben Tabelle und hat diese
+#   höchstens so viele Zeilen, wird sie ebenfalls komplett geladen (0 = aus).
 # =============================================================================
 
 retriever:
   top_k: 5
   min_similarity: 0.5   # ÄNDERUNG: 0.40–0.75 je nach Domäne und Treffer-Qualität
-  use_hybrid: false
-  hybrid_dense_weight: 1
-  hybrid_sparse_weight: 0
-  candidate_multiplier: 1
+  table_min_similarity: 0.35
+  use_hybrid: true
+  hybrid_dense_weight: 0.7
+  hybrid_sparse_weight: 0.3
+  candidate_multiplier: 8
+  aggregate_max_chunks: 150
+  auto_table_context_rows: 40
 
 # =============================================================================
 # ANTWORTGENERATOR – LLM-basierte Antwortgenerierung

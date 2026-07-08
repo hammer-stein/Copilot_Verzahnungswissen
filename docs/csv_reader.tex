@@ -1,0 +1,599 @@
+\documentclass[12pt, a4paper]{article}
+
+% ============================================================
+% Pakete (Stil identisch zu dokumentation.tex)
+% ============================================================
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[ngerman]{babel}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\setlength{\headheight}{15pt}
+
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds, calc}
+
+% ============================================================
+% Farben
+% ============================================================
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{keywordcolor}{RGB}{0,0,180}
+\definecolor{commentcolor}{RGB}{100,130,80}
+\definecolor{stringcolor}{RGB}{180,0,0}
+\definecolor{accentblue}{RGB}{0,90,160}
+\definecolor{accentgray}{RGB}{90,90,90}
+\definecolor{boxbg}{RGB}{235,245,255}
+\definecolor{boxframe}{RGB}{0,90,160}
+\definecolor{tablegreen}{RGB}{225,245,230}
+\definecolor{tablegreenframe}{RGB}{30,130,70}
+
+% ============================================================
+% Listings-Stil
+% ============================================================
+\lstset{
+  literate=%
+    {ä}{{\"{a}}}1 {ö}{{\"{o}}}1 {ü}{{\"{u}}}1
+    {Ä}{{\"{A}}}1 {Ö}{{\"{O}}}1 {Ü}{{\"{U}}}1
+    {ß}{{\ss{}}}1
+    {→}{{$\rightarrow$}}1
+    {←}{{$\leftarrow$}}1
+    {…}{{...}}1
+}
+
+\lstdefinestyle{datastyle}{
+  language=,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\small,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  xleftmargin=1.5em,
+}
+
+\lstdefinestyle{yamlstyle}{
+  language=,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\small,
+  commentstyle=\color{commentcolor}\itshape,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  xleftmargin=1.5em,
+  morecomment=[l]{\#},
+}
+
+% ============================================================
+% tcolorbox-Stile
+% ============================================================
+\tcbuselibrary{skins, breakable}
+
+\newtcolorbox{infobox}[1][]{
+  colback=boxbg,
+  colframe=boxframe,
+  fonttitle=\bfseries,
+  title={#1},
+  breakable,
+}
+
+\newtcolorbox{hinweisbox}[1][]{
+  colback=tablegreen,
+  colframe=tablegreenframe,
+  fonttitle=\bfseries,
+  title={#1},
+  breakable,
+}
+
+% ============================================================
+% Seitenlayout
+% ============================================================
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\textcolor{accentgray}{\small KI-Copilot für Verzahnungswissen}}
+\lhead{\textcolor{accentgray}{\small CSV-Modul: Funktionsweise des Readers}}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=accentblue,
+  urlcolor=accentblue,
+  pdftitle={CSV-Modul: Funktionsweise des Tabellen-Readers},
+}
+
+\titleformat{\section}{\Large\bfseries\color{accentblue}}{}{0em}{\thesection\quad}[\titlerule]
+\titleformat{\subsection}{\large\bfseries\color{accentblue}}{}{0em}{\thesubsection\quad}
+\titleformat{\subsubsection}{\normalsize\bfseries}{}{0em}{\thesubsubsection\quad}
+
+% ============================================================
+% Dokument
+% ============================================================
+\begin{document}
+
+\begin{center}
+  {\LARGE\bfseries\color{accentblue} CSV-Modul: Funktionsweise des Tabellen-Readers\par}
+  \vspace{0.3cm}
+  {\large\color{accentgray} Von der hochgeladenen Tabellen-Datei zur belegten Antwort\par}
+  \vspace{0.6cm}
+\end{center}
+
+\begin{tcolorbox}[colback=boxbg, colframe=boxframe]
+  Dieses Dokument erklärt, wie der KI-Copilot CSV- und Excel-Dateien verarbeitet:
+  in welchen zwei Rollen eine Tabelle ins System gelangt, wie Zeilen für die
+  Vektorsuche aufbereitet werden, wie die Suche Tabellen anders behandelt als
+  PDF-Text und wie aus einer Zahnrad-CSV strukturierte Bauteildaten entstehen.
+  Referenzierte Module: \texttt{tabular\_loader\_pandas.py},
+  \texttt{chunker\_recursive.py}, \texttt{retriever\_hybrid.py},
+  \texttt{csv\_gear\_mapper.py}.
+\end{tcolorbox}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Motivation: Warum Tabellen ein Sonderfall sind}
+% ============================================================
+
+Das RAG-System wurde ursprünglich für Fließtext (PDF-Normen, Fachliteratur)
+entworfen. Tabellen brechen dabei gleich mehrere Grundannahmen:
+
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{Embedding-Lücke:} Das Embedding-Modell \texttt{bge-m3} ist auf
+        natürliche Sprache optimiert. Nackte CSV-Zeilen wie
+        \texttt{W-103,Ausgangswelle,1,42CrMo4} erzielen nur Ähnlichkeitswerte
+        um $0{,}4$ -- und fallen damit unter den globalen Retrieval-Schwellenwert
+        von $0{,}5$, bevor das LLM sie je zu sehen bekommt.
+  \item \textbf{Kontextverlust beim Chunking:} Ein Satz-Chunker verschmilzt
+        benachbarte Zeilen oder zerschneidet sie -- der Zeilenzusammenhang
+        (\glqq eine Zeile = ein Datensatz\grqq) geht verloren.
+  \item \textbf{Starre Treffergrenze:} Mit $k=5$ Treffern kann eine Frage wie
+        \glqq Zeige mir \emph{alle} Wellen\grqq{} niemals vollständig beantwortet
+        werden, sobald die Tabelle mehr als fünf relevante Zeilen enthält.
+  \item \textbf{Semantische Verallgemeinerung:} Ohne strikte Spaltenbindung
+        macht das LLM aus einer \glqq Ausgangswelle\grqq{} schnell eine
+        generische \glqq Antriebswelle\grqq.
+\end{enumerate}
+
+Der Reader begegnet dem mit vier ineinandergreifenden Bausteinen:
+\emph{Zeile$\rightarrow$Satz-Preprocessing} (Abschnitt~\ref{sec:preprocessing}),
+\emph{tabellenbewusstem Chunking} (Abschnitt~\ref{sec:chunking}),
+\emph{sortenspezifischen Schwellenwerten mit Hybrid-Suche}
+(Abschnitt~\ref{sec:retrieval}) und einem \emph{Split-Search-Routing}
+(Abschnitt~\ref{sec:routing}).
+
+% ============================================================
+\section{Zwei Rollen -- der Upload-Ort entscheidet}
+% ============================================================
+
+Eine CSV-Datei kann zwei grundverschiedene Dinge bedeuten: \emph{Wissen}
+(z.\,B. eine Stückliste, die durchsuchbar sein soll) oder \emph{Bauteildaten}
+(die Parameter genau eines Zahnrads, analog zu einer STEP-Analyse). Das System
+entscheidet nicht per Heuristik, sondern über den Ort des Uploads:
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=0.55cm and 1.0cm,
+  box/.style={rectangle, rounded corners=2pt, draw=accentgray, fill=codebg,
+              text width=4.6cm, align=center, font=\small, inner sep=6pt},
+  chan/.style={rectangle, rounded corners=2pt, draw=boxframe, fill=boxbg,
+               text width=4.6cm, align=center, font=\small, inner sep=6pt},
+  arr/.style={-{Stealth}, thick, color=accentgray},
+]
+  \node[box] (lib) {\textbf{Dokumentbibliothek}\\ \glqq Dokumente hochladen\grqq};
+  \node[box, right=2.2cm of lib] (comp) {\textbf{Composer / Sidebar}\\ Plus-Button bzw. \glqq Aktives Bauteil\grqq};
+
+  \node[chan, below=of lib]  (know) {\texttt{POST /upload}\\ Kanal A: \textbf{Wissen}\\ Indexierung in Qdrant};
+  \node[chan, below=of comp] (part) {\texttt{POST /cad/from-csv}\\ Kanal B: \textbf{Bauteildaten}\\ \texttt{cad\_metadata} für \texttt{/ask}};
+
+  \draw[arr] (lib) -- (know);
+  \draw[arr] (comp) -- (part);
+\end{tikzpicture}
+\caption{Rollentrennung: identische Datei, zwei Verarbeitungswege.}
+\end{figure}
+
+Beide Kanäle akzeptieren \texttt{.csv}, \texttt{.xlsx} und \texttt{.xls}.
+PDF-Dateien laufen unabhängig vom Upload-Ort immer in die Wissensbasis.
+
+% ============================================================
+\section{Kanal A: CSV als Wissen}
+% ============================================================
+
+\subsection{Einlesen (\texttt{tabular\_loader\_pandas.py})}
+
+Der \texttt{TabularLoader} implementiert das \texttt{DocumentLoader}-Protokoll
+und liest die Datei robust ein:
+
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Encoding-Kaskade:} \texttt{utf-8} $\rightarrow$ \texttt{latin1}
+        $\rightarrow$ \texttt{cp1252} $\rightarrow$ \texttt{iso-8859-1} --
+        deckt auch Excel-Exporte mit Windows-Kodierung ab.
+  \item \textbf{Separator-Erkennung:} \texttt{pandas} mit \texttt{sep=None}
+        (Python-Engine) erkennt Komma, Semikolon und Tabulator automatisch.
+  \item \textbf{Excel:} \texttt{.xlsx}/\texttt{.xls} werden über
+        \texttt{openpyxl} gelesen.
+  \item \textbf{Identität:} Der SHA-256-Hash der Datei wird zum
+        \texttt{doc\_hash} -- Grundlage für Deduplikation und Löschung.
+\end{itemize}
+
+\subsection{Zeile$\rightarrow$Satz-Preprocessing}
+\label{sec:preprocessing}
+
+Kernidee: Jede Datenzeile wird beim Laden in eine natürlichsprachliche Aussage
+umgewandelt, die \emph{gleichzeitig} die Spaltenstruktur explizit erhält.
+
+\begin{lstlisting}[style=datastyle, caption={Vorher: Rohzeile aus \texttt{getriebe\_stueckliste.csv}}]
+Bauteil_ID,Bezeichnung,Menge,Werkstoff,Modul_mm,Zaehnezahl,Oberflaechenhaerte
+G-001,Stirnrad Antriebswelle,1,16MnCr5,3.0,24,58 HRC
+\end{lstlisting}
+
+\begin{lstlisting}[style=datastyle, caption={Nachher: Satzform, wie sie eingebettet und indexiert wird}]
+Bauteil G-001 (Bauteil_ID: G-001): Bezeichnung = Stirnrad Antriebswelle; Menge = 1; Werkstoff = 16MnCr5; Modul_mm = 3.0; Zaehnezahl = 24; Oberflaechenhaerte = 58 HRC.
+\end{lstlisting}
+
+Die Konstruktionsregeln:
+
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{Subjekt aus der ersten Spalte:} Der Wert der ersten Spalte wird
+        zum Satzanfang. Endet der Spaltenname auf ein ID-Suffix
+        (\texttt{\_ID}, \texttt{-ID}, \dots), wird daraus das Subjektwort
+        abgeleitet: \texttt{Bauteil\_ID} $\rightarrow$ \glqq Bauteil G-001\grqq.
+  \item \textbf{Expliziter Header-Bezug:} Die Klammer
+        \texttt{(Bauteil\_ID: G-001)} nennt den exakten Spaltennamen -- das
+        ermöglicht dem LLM später strenges ID-Matching in der richtigen Spalte.
+  \item \textbf{\glqq Spalte = Wert\grqq-Paare:} Alle weiteren gefüllten Spalten
+        folgen als Paare mit Semikolon-Trennung. Die Spaltenzuordnung bleibt
+        damit in jedem einzelnen Chunk vollständig erhalten.
+  \item \textbf{Leerwerte entfallen:} \texttt{-}, \texttt{n/a}, \texttt{NaN},
+        leere Zellen usw. werden übersprungen -- eine Welle ohne Modul erhält
+        schlicht keine Modul-Aussage (statt eines irreführenden Platzhalters).
+\end{enumerate}
+
+\begin{infobox}[Warum das die Such-Scores hebt]
+Embedding-Modelle bewerten Ähnlichkeit zwischen \emph{Sätzen}. Die Frage
+\glqq Welchen Werkstoff hat W-103?\grqq{} und die Aussage
+\glqq Bauteil W-103 (\dots): Werkstoff = 42CrMo4; \dots\grqq{} teilen sich
+Vokabular \emph{und} Satzgestalt -- die Kosinus-Ähnlichkeit steigt deutlich
+gegenüber der rohen Kommaliste. Zusätzlich enthält jede Zeile die Fachbegriffe
+der Header, wodurch auch der lexikalische Sparse-Kanal
+(Abschnitt~\ref{sec:retrieval}) exakt greift.
+\end{infobox}
+
+Das Ergebnis wird als \texttt{RawDocument} mit der Markierung
+\texttt{doc\_kind = "table"} zurückgegeben -- dieses eine Feld steuert die
+gesamte tabellenspezifische Sonderbehandlung stromabwärts.
+
+\subsection{Tabellenbewusstes Chunking}
+\label{sec:chunking}
+
+Für Fließtext gilt weiterhin das satzbasierte Chunking nach Token-Limit
+(bzw. der semantische Chunker). Trägt ein Dokument jedoch
+\texttt{doc\_kind = "table"}, greifen \emph{beide} Chunker-Implementierungen
+auf die gemeinsame Funktion \texttt{chunk\_table\_rows()} zurück:
+
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Eine Zeile = ein Chunk.} Kein Verschmelzen benachbarter
+        Datensätze, kein Zerschneiden am Token-Limit, kein Overlap.
+  \item \textbf{Keine Mindestgröße.} Der \texttt{min\_chunk\_tokens}-Filter
+        (der kurze Zeilen verwerfen würde) ist für Tabellen deaktiviert.
+  \item \textbf{Reihenfolge bleibt erhalten.} Die \texttt{position} zählt
+        monoton -- beim späteren Voll-Laden erscheint die Tabelle in
+        Originalreihenfolge.
+\end{itemize}
+
+Beim Indexieren wandert \texttt{doc\_kind} in die Metadaten jedes Chunks und
+liegt damit als Payload-Feld in der Vektordatenbank Qdrant -- die Suche kann
+Tabellenzeilen später von PDF-Text unterscheiden.
+
+\subsection{Suche: Hybrid-Score und sortenspezifische Schwellenwerte}
+\label{sec:retrieval}
+
+Jede Frage wird mit \texttt{bge-m3} eingebettet und in Qdrant gesucht. Bei
+aktivierter Hybrid-Suche kombiniert der Retriever den dichten (semantischen)
+Score mit einem lexikalischen Sparse-Score (Bag-of-words, exakte
+Begriffstreffer für IDs, Normnummern, Werkstoffcodes):
+
+\begin{equation*}
+  s(c) \;=\; w_d \cdot s_{\text{dense}}(c) \;+\; w_s \cdot s_{\text{sparse}}(c),
+  \qquad w_d = 0{,}7,\; w_s = 0{,}3 .
+\end{equation*}
+
+Statt nur $k=5$ Kandidaten holt die Suche zunächst
+$k \cdot \texttt{candidate\_multiplier} = 5 \cdot 8 = 40$ dichte Kandidaten und
+sortiert sie nach dem Hybrid-Score neu.
+
+Entscheidend für Tabellen ist der \textbf{sortenspezifische Schwellenwert}:
+Tabellenzeilen erzielen systembedingt niedrigere Scores als Fließtext und
+werden deshalb gegen eine eigene, niedrigere Schwelle geprüft:
+
+\begin{equation*}
+  \text{akzeptiert}(c) \;\Longleftrightarrow\;
+  s(c) \;\geq\;
+  \begin{cases}
+    \tau_{\text{table}} = 0{,}35 & \text{falls } \texttt{doc\_kind}(c) = \texttt{table},\\[2pt]
+    \tau_{\text{text}} = 0{,}50  & \text{sonst (PDF/Fließtext).}
+  \end{cases}
+\end{equation*}
+
+Technisch läuft das zweistufig: Qdrant filtert serverseitig grob mit
+$\min(\tau_{\text{text}}, \tau_{\text{table}})$ -- sonst wären Tabellenzeilen
+verworfen, bevor der Retriever sie sieht --, danach wendet der Retriever die
+sortenspezifische Schwelle auf den finalen Hybrid-Score an. Für PDF-Wissen
+ändert sich dadurch nichts: Textchunks müssen unverändert $0{,}5$ erreichen.
+
+\subsection{Split-Search-Routing: die \texttt{top\_k}-Grenze aufheben}
+\label{sec:routing}
+
+Nach Filterung entscheidet der Retriever \emph{deterministisch} (Regeln, kein
+LLM-Aufruf), ob statt der besten $k$ Treffer eine ganze Tabelle als Kontext
+geladen wird:
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=0.5cm and 0.6cm,
+  stage/.style={rectangle, rounded corners=2pt, draw=accentgray, fill=codebg,
+               text width=5.6cm, align=center, font=\small, inner sep=5pt},
+  dec/.style={rectangle, rounded corners=2pt, draw=boxframe, fill=boxbg,
+              text width=5.6cm, align=center, font=\small, inner sep=5pt},
+  res/.style={rectangle, rounded corners=2pt, draw=tablegreenframe, fill=tablegreen,
+              text width=4.6cm, align=center, font=\small, inner sep=5pt},
+  arr/.style={-{Stealth}, thick, color=accentgray},
+  lab/.style={font=\scriptsize\itshape, color=accentgray},
+]
+  \node[stage] (search) {Hybrid-Suche: 40 Kandidaten,\\ sortenspezifisch gefiltert};
+  \node[dec, below=of search] (kw) {\textbf{Route 1:} Enthält die Frage Listen-Signalwörter?\\ (\glqq alle\grqq, \glqq sämtliche\grqq, \glqq wie viele\grqq, \glqq Liste\grqq, \dots) \emph{und} gibt es einen Tabellen-Treffer?};
+  \node[dec, below=of kw] (dom) {\textbf{Route 2 (ergebnisgetrieben):} Stammt die \emph{Mehrheit} der Top-$k$-Treffer aus \emph{derselben} Tabelle?};
+  \node[dec, below=of dom] (size) {Hat diese Tabelle höchstens \texttt{auto\_table\_context\_rows} = 40 Zeilen?};
+  \node[res, below=of size] (topk) {Normaler Pfad:\\ beste $k=5$ Treffer};
+  \node[res, right=1.4cm of kw, yshift=-1.1cm] (full) {\textbf{Ganze Tabelle laden}\\ alle Zeilen in Originalreihenfolge\\ (Deckel: 150 Zeilen)};
+
+  \draw[arr] (search) -- (kw);
+  \draw[arr] (kw) -- node[lab, left] {nein} (dom);
+  \draw[arr] (dom) -- node[lab, left] {ja} (size);
+  \draw[arr] (size) -- node[lab, left] {nein} (topk);
+  \draw[arr] (dom.west) -- node[lab, above=1pt] {nein} ++(-1.0,0) |- (topk.west);
+  \draw[arr] (kw.east) to[out=0, in=140] node[lab, above right=-1pt] {ja} (full.north west);
+  \draw[arr] (size.east) to[out=0, in=-90] node[lab, below right=-1pt] {ja} (full.south);
+\end{tikzpicture}
+\caption{Entscheidungsbaum des Split-Search-Routings (pro Frage, ohne LLM).}
+\end{figure}
+
+\textbf{Route 1 -- Signalwörter:} Ein regulärer Ausdruck erkennt
+Aggregat-Formulierungen (u.\,a. \emph{alle, sämtliche, Liste, auflisten,
+aufzählen, Übersicht, wie viele, Anzahl, gesamt, jede/jeder, vollständig,
+komplett}; Wortgrenzen verhindern Fehltreffer wie \glqq Met\emph{alle}\grqq).
+Trifft ein Signalwort zu und liegt unter den Kandidaten ein
+Tabellen-Treffer, wird dessen Dokument komplett geladen
+(max. \texttt{aggregate\_max\_chunks} = 150 Zeilen).
+
+\textbf{Route 2 -- ergebnisgetrieben:} Formulierungen \emph{ohne} Signalwort
+(\glqq \emph{Welche} Wellen gibt es?\grqq) erkennt keine Wortliste. Deshalb
+wertet der Retriever zusätzlich das \emph{Suchergebnis selbst} aus: Stammt die
+Mehrheit ($>50\,\%$) der Top-$k$-Treffer aus derselben Tabelle, \glqq landet\grqq{}
+die Frage offensichtlich breit in dieser Tabelle -- viele Zeilen passen ähnlich
+gut, und die starre Top-5-Auswahl würde willkürlich Zeilen verschlucken. In
+diesem Fall wird die Tabelle ebenfalls komplett geladen -- aber nur, wenn sie
+höchstens 40 Zeilen hat (Größenprüfung über ein Scroll-Sentinel). Große
+Tabellen bleiben ohne explizites Listen-Signal beim Top-$k$-Pfad, damit
+Einzelfakt-Fragen den LLM-Kontext nicht fluten.
+
+Beim Voll-Laden erben alle Zeilen den Score des besten Tabellen-Treffers
+(\emph{Seed}) -- für die Quellenanzeige zählt die Relevanz des Dokuments, nicht
+die der Einzelzeile. Die Zeilen erscheinen in Originalreihenfolge.
+
+\begin{hinweisbox}[Bewusster Nebeneffekt]
+Besteht der Korpus (fast) nur aus einer kleinen Tabelle, bekommt auch eine
+Einzelfakt-Frage die ganze Tabelle als Kontext -- die richtige Zeile ist dann
+\emph{garantiert} enthalten, unabhängig davon, ob sie es in die Top-5 geschafft
+hätte. Bei gemischtem Korpus mit dominanten PDF-Treffern bleibt der normale
+Pfad erhalten.
+\end{hinweisbox}
+
+\subsection{Verhaltensregeln im LLM-Prompt}
+
+Damit das Sprachmodell die aufbereiteten Zeilen korrekt nutzt, enthält der
+Systemprompt tabellenspezifische Regeln:
+
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Strikte Spalten-Zuordnung:} Werte ausschließlich hinter dem
+        exakt passenden Spaltennamen ablesen (\glqq Spalte = Wert\grqq-Format).
+  \item \textbf{Kein Kategorien-Raten:} Bezeichnungen wortwörtlich übernehmen
+        (\glqq Ausgangswelle\grqq{} wird nie zu \glqq Antriebswelle\grqq{}
+        verallgemeinert).
+  \item \textbf{Exaktes ID-Matching:} Eine angefragte ID (z.\,B. W-103) muss
+        im ID-Feld eines Datensatzes stehen; existiert sie nicht, wird das
+        bestätigt statt ähnliche IDs zu erfinden.
+  \item \textbf{Mengen-Logik:} Fehlende Stückzahlen heißen
+        \glqq nicht spezifiziert\grqq{} -- keine erfundenen Platzhalter.
+  \item \textbf{Vollständige Auflistungen:} Bei Listen-/Zählfragen werden
+        \emph{alle} zutreffenden Datensätze einzeln aufgezählt (kein
+        \glqq usw.\grqq), mit Gesamtanzahl am Ende.
+\end{itemize}
+
+% ============================================================
+\section{Kanal B: CSV als Bauteildaten}
+% ============================================================
+
+\subsection{Grundprinzip}
+
+Der zweite Kanal behandelt eine CSV wie das Ergebnis einer CAD-Analyse:
+\texttt{csv\_gear\_mapper.py} liest die Datei und erzeugt dieselbe
+verschachtelte \texttt{GearParameters}-Struktur, die auch der CAD-Prozessor
+für STEP-Dateien liefert. Das Ergebnis fließt unverändert als
+\texttt{cad\_metadata} in \texttt{/ask} ein und wird im Inspector des Frontends
+angezeigt.
+
+\begin{hinweisbox}[Wichtig: Lesen, nicht Erkennen]
+Anders als bei STEP wird hier \emph{keine Geometrie analysiert}. Der Mapper
+liest ausschließlich, was in den Spalten steht -- er rechnet nichts nach und
+rät nichts. Fehlt z.\,B. eine Typ-Spalte, bleibt \texttt{gear\_type} leer;
+aus \glqq Modul 2{,}5 + 32 Zähne\grqq{} wird \emph{nicht} auf
+\glqq Stirnrad\grqq{} geschlossen. Konvention: \textbf{eine CSV = ein Bauteil}
+(bei Stücklisten wird die erste Zeile mit Verzahnungsdaten verwendet und eine
+Warnung ausgegeben).
+\end{hinweisbox}
+
+\subsection{Spaltenerkennung}
+
+Spaltennamen werden normalisiert (Kleinschreibung, Umlaute
+\texttt{ä$\rightarrow$ae} usw., Einheiten-Klammern und Sonderzeichen entfernt:
+\glqq Modul (mm)\grqq{} $\rightarrow$ \texttt{modul}) und gegen eine
+Alias-Tabelle geprüft. Sie deckt deutsche und englische Namen sowie
+DIN-Kurzzeichen ab:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+\textbf{Zielfeld (GearParameters)} & \textbf{akzeptierte Spaltennamen (Auswahl)} \\
+\midrule
+\texttt{gear\_type}            & Verzahnungstyp, Zahnradtyp, Bauart, Typ \\
+\texttt{module\_mm}            & Modul, Modul\_mm, Module, Normalmodul, m \\
+\texttt{num\_teeth}            & Zähnezahl, Zahnzahl, Teeth, z \\
+\texttt{pressure\_angle\_deg}  & Eingriffswinkel, pressure\_angle, alpha \\
+\texttt{helix\_angle\_deg}     & Schrägungswinkel, helix\_angle, beta \\
+\texttt{pitch\_diameter\_mm}   & Teilkreis(durchmesser), d \\
+\texttt{outer\_diameter\_mm}   & Kopfkreis, Außendurchmesser, da \\
+\texttt{root\_diameter\_mm}    & Fußkreis, df \\
+\texttt{face\_width\_mm}       & Zahnbreite, Breite, b \\
+\texttt{material}              & Werkstoff, Material \\
+\texttt{tolerance\_class}      & Härte, Oberflächenhärte, Toleranzklasse \\
+\texttt{part\_name} / \texttt{part\_number} & Bezeichnung, Name / Bauteil\_ID, Teilenummer, Artikelnummer \\
+\bottomrule
+\end{tabularx}
+\caption{Spalten-Alias-Zuordnung (erweiterbar in \texttt{csv\_gear\_mapper.py}).}
+\end{table}
+
+Mindestens eine der Signal-Spalten \emph{Modul}, \emph{Zähnezahl} oder
+\emph{Verzahnungstyp} muss vorhanden sein -- sonst lehnt der Endpunkt die Datei
+mit HTTP~400 und der Meldung \glqq keine erkennbaren Verzahnungs-Spalten\grqq{} ab.
+
+\subsection{Wert-Parsing und Typ-Zuordnung}
+
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Zahlen:} Deutsches Dezimalkomma (\texttt{"2,5"}) und angehängte
+        Einheiten (\texttt{"20°"}, \texttt{"25 mm"}) werden toleriert;
+        Zähnezahlen werden zu Ganzzahlen gerundet.
+  \item \textbf{Typbezeichnungen} werden auf das interne Enum abgebildet:
+        Stirnrad\,$\rightarrow$\,\texttt{spur},
+        Schrägverzahnung\,$\rightarrow$\,\texttt{helical},
+        Kegelrad\,$\rightarrow$\,\texttt{bevel},
+        Hohlrad/Innenverzahnung\,$\rightarrow$\,\texttt{internal},
+        Schnecke\,$\rightarrow$\,\texttt{worm},
+        Zahnstange\,$\rightarrow$\,\texttt{rack}.
+        Unbekannte Begriffe werden unverändert durchgereicht.
+  \item \textbf{Konfidenz:} Jeder Wert wird im Schema-2.0-Format
+        \texttt{\{value, unit, confidence\}} ausgegeben, mit
+        $\text{confidence} = 0{,}92$ -- das entspricht der Stufe
+        \textsc{Direct} des CAD-Prozessors: \emph{explizit angegeben, nicht aus
+        Geometrie geschätzt}.
+\end{itemize}
+
+\begin{lstlisting}[style=datastyle, caption={Auszug der Antwort von \texttt{POST /cad/from-csv}}]
+{
+  "schema_version": "2.0",
+  "filename": "zahnrad.csv",
+  "gear_type": {"value": "spur", "unit": "", "confidence": 0.92},
+  "tooth_profile": {
+    "module_mm":  {"value": 2.5, "unit": "mm", "confidence": 0.92},
+    "num_teeth":  {"value": 32,  "unit": "",   "confidence": 0.92}
+  },
+  "material_context": {"material": "16MnCr5"},
+  "metadata": {"part_number": "G-010", "created_by": "csv_gear_mapper"},
+  "extraction_quality": {"warnings": []}
+}
+\end{lstlisting}
+
+\subsection{Ablauf im GUI}
+
+Nach dem Upload über den Plus-Button (Composer) oder \glqq Aktives Bauteil\grqq{}
+(Sidebar) zeigt der Bauteil-Chip den Status (\emph{Wird analysiert} \dots{}
+\emph{ready}), der Inspector rendert Modul, Zähnezahl, Werkstoff usw., und jede
+Folgefrage sendet die Parameter als \texttt{cad\_metadata} mit. Antworten, die
+sich darauf stützen, markiert das LLM mit \texttt{[CAD]}; Wissens-Treffer
+tragen weiterhin \texttt{[Q1]}, \texttt{[Q2]}, \dots
+
+% ============================================================
+\section{Konfigurationsreferenz}
+% ============================================================
+
+Alle Stellschrauben des Readers liegen im Abschnitt \texttt{retriever} der
+\texttt{config.yaml}:
+
+\begin{lstlisting}[style=yamlstyle]
+retriever:
+  top_k: 5                     # Treffer im Normalpfad
+  min_similarity: 0.5          # Schwelle für PDF-/Textchunks
+  table_min_similarity: 0.35   # niedrigere Schwelle NUR für Tabellenzeilen
+  use_hybrid: true             # Dense + lexikalischer Sparse-Kanal
+  hybrid_dense_weight: 0.7
+  hybrid_sparse_weight: 0.3
+  candidate_multiplier: 8      # 40 Kandidaten vor dem Reranking
+  aggregate_max_chunks: 150    # Deckel Route 1 (Signalwörter)
+  auto_table_context_rows: 40  # Maximalgröße Route 2 (0 = Route 2 aus)
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{Wirkung / wann anpassen} \\
+\midrule
+\texttt{table\_min\_similarity} & 0.35 & Tabellenzeilen fallen trotz Satzform durch $\rightarrow$ senken; zu viel Tabellen-Rauschen $\rightarrow$ anheben. \\
+\texttt{aggregate\_max\_chunks} & 150 & Obergrenze für Voll-Laden bei Listenfragen; an Kontextfenster des LLM koppeln. \\
+\texttt{auto\_table\_context\_rows} & 40 & Ab welcher Tabellengröße Route 2 nicht mehr automatisch voll lädt; 0 deaktiviert Route 2 komplett. \\
+\texttt{candidate\_multiplier} & 8 & Breite der Vorsuche -- Basis der Mehrheitsentscheidung von Route 2. \\
+\bottomrule
+\end{tabularx}
+\caption{Die vier tabellenrelevanten Stellschrauben.}
+\end{table}
+
+% ============================================================
+\section{Grenzen und betriebliche Hinweise}
+% ============================================================
+
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Reindex erforderlich:} Nach Aktivierung von Sparse-Vektoren
+        bzw. Einführung von \texttt{doc\_kind} müssen bestehende Dokumente neu
+        indexiert werden (\texttt{storage/qdrant} leeren, Dateien erneut
+        hochladen) -- alte Qdrant-Punkte tragen die neuen Felder nicht.
+  \item \textbf{Signalwortliste ist deutsch:} Route 1 erkennt deutsche
+        Formulierungen; englische Fragen fallen auf Route 2 bzw. den
+        Top-$k$-Pfad zurück.
+  \item \textbf{Schwellenwerte sind Startwerte:} $\tau_{\text{table}} = 0{,}35$
+        wurde konservativ gewählt; die tatsächlichen \texttt{bge-m3}-Scores der
+        Satzform sollten im Live-Betrieb geprüft und der Wert ggf. nachjustiert
+        werden.
+  \item \textbf{Eine CSV = ein Bauteil (Kanal B):} Mehrzeilige Stücklisten
+        gehören in die Wissensbasis; der Bauteil-Mapper nimmt sonst nur die
+        erste Verzahnungszeile und warnt.
+  \item \textbf{Kein Konversationskontext:} Wie im Gesamtsystem ist jede
+        Anfrage isoliert -- die Tabelle wird pro Frage neu gesucht bzw.
+        geladen.
+\end{itemize}
+
+\end{document}

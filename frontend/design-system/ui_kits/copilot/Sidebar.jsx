@@ -46,7 +46,7 @@ function Sidebar({ chats, activePart, knowledgeBase, activeChat, kbOpen, onSelec
         <input
           ref={stepInput}
           type="file"
-          accept=".step,.stp,.stp242,.p21,.iges,.igs,.json,model/step,application/json"
+          accept=".step,.stp,.stp242,.p21,.iges,.igs,.json,.csv,.xlsx,.xls,model/step,application/json,text/csv"
           style={{ display: 'none' }}
           onChange={onStepChosen}
         />

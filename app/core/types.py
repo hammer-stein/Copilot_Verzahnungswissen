@@ -31,6 +31,7 @@ class RawDocument:
     source_path: str
     doc_hash: str   # SHA-256 der Datei – ermöglicht Deduplikation und Löschung
     pages: list[RawDocumentPage]
+    doc_kind: str = "text"  # "text" (PDF/Fließtext) | "table" (CSV/Excel – 1 Zeile = 1 Datensatz)
 
 
 @dataclass(frozen=True)

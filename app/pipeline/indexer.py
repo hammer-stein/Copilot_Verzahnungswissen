@@ -76,7 +76,9 @@ class KnowledgeBaseIndexer:
         vectors = embedding_result.dense_vectors
         sparse_vectors = embedding_result.sparse_vectors or [None] * len(chunks)
 
-        doc_meta = {"file_name": display_name, "folder": folder}
+        # doc_kind ("text" | "table") wandert in die Chunk-Metadaten → Qdrant-Payload,
+        # damit der Retriever Tabellen-Dokumente beim Aggregat-Routing erkennen kann.
+        doc_meta = {"file_name": display_name, "folder": folder, "doc_kind": getattr(doc, "doc_kind", "text")}
         embedded: list[EmbeddedChunk] = [
             EmbeddedChunk(chunk=c, dense_vector=v, sparse_vector=sv, metadata=dict(doc_meta))
             for c, v, sv in zip(chunks, vectors, sparse_vectors)
