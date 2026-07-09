@@ -435,6 +435,20 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
             raise HTTPException(status_code=404, detail="CAD preview not found.")
         return FileResponse(preview_path, media_type="model/stl", filename=name)
 
+    @app.delete("/cad/preview/{name}")
+    async def delete_cad_preview(name: str):
+        """
+        Löscht das STL-Preview-Mesh eines entladenen Bauteils. Die STEP-/CSV-Quelldatei
+        wird bereits direkt nach der Analyse entfernt – das Preview ist das Einzige,
+        was serverseitig von einem CAD-Upload übrig bleibt ("Bauteil entfernen" im Frontend).
+        """
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+\.stl", name):
+            raise HTTPException(status_code=404, detail="Unknown CAD preview.")
+        preview_path = cad_previews_dir / name
+        existed = preview_path.exists()
+        preview_path.unlink(missing_ok=True)
+        return {"deleted": existed, "name": name}
+
     def _analyze_cad_with_preview(step_path: Path, preview_path: Path, original_filename: str) -> dict[str, Any]:
         result = components.cad_adapter.extract(step_path)
         if not isinstance(result, dict):

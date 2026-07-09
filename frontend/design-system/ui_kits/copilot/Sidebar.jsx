@@ -1,5 +1,5 @@
 /* Left sidebar: brand, new chat, chat history, active part + RAG status. */
-function Sidebar({ chats, activePart, knowledgeBase, activeChat, kbOpen, onSelectChat, onNewChat, onHome, onUploadStep, onManageKb }) {
+function Sidebar({ chats, activePart, knowledgeBase, activeChat, kbOpen, onSelectChat, onNewChat, onHome, onUploadStep, onRemovePart, onManageKb }) {
   const { Button, IconButton, Spinner } = window.VerzahnungsCopilotDesignSystem_c9990b;
   const stepInput = React.useRef(null);
   const groups = {};
@@ -66,6 +66,7 @@ function Sidebar({ chats, activePart, knowledgeBase, activeChat, kbOpen, onSelec
               )}
             </div>
             <IconButton size="sm" title="Andere STEP-Datei hochladen" onClick={pickStep}><Icon name="refresh-cw" size={14} /></IconButton>
+            <IconButton size="sm" title="Bauteil entfernen" onClick={onRemovePart}><Icon name="trash-2" size={14} /></IconButton>
           </div>
         ) : (
           <button className="vc-upload" onClick={pickStep}>

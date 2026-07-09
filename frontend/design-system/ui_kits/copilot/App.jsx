@@ -631,6 +631,18 @@ function App() {
     }
   };
 
+  /* "Bauteil entfernen": leert den CAD-Zustand (cad_metadata, Preview, Chip) und
+     räumt das serverseitige STL-Preview auf – die STEP-/CSV-Quelldatei ist bereits
+     direkt nach der Analyse gelöscht worden. */
+  const removePart = () => {
+    if (cadPreview && cadPreview.url) {
+      fetch(`${API}${cadPreview.url}`, { method: 'DELETE' }).catch(() => {});
+    }
+    setCadMeta(null);
+    setCadPreview(null);
+    setActivePart(null);
+  };
+
   /* While the knowledge-base manager is open it takes over the whole main area
      (chat, composer and inspector are hidden) — focused document/folder work. */
   const showInspector = inspectorOpen && !kbOpen;
@@ -647,6 +659,7 @@ function App() {
         onNewChat={() => { setKbOpen(false); newChat(); }}
         onHome={() => { setKbOpen(false); goHome(); }}
         onUploadStep={uploadFile}
+        onRemovePart={removePart}
         onManageKb={openKb}
       />
       <div className="vc-main">
@@ -680,7 +693,7 @@ function App() {
           </>
         )}
       </div>
-      {showInspector && <Inspector gear={gearView} raw={cadMeta} preview={cadPreview} hasPart={!!cadMeta} onClose={() => setInspectorOpen(false)} />}
+      {showInspector && <Inspector gear={gearView} raw={cadMeta} preview={cadPreview} hasPart={!!cadMeta} onClose={() => setInspectorOpen(false)} onRemovePart={removePart} />}
       {sidebarOpen && <div className="vc-scrim" onClick={() => setSidebarOpen(false)} />}
     </div>
   );

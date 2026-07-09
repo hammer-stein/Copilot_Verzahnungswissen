@@ -199,3 +199,23 @@ def test_ask_failure_marks_failing_step_with_error_message():
     assert failed[0]["key"] == "answer_generation"  # Fehlerort ist der Generierungs-Schritt
     assert "Antwortgenerierung fehlgeschlagen" in failed[0]["content"]
     assert "Ollama nicht erreichbar" in failed[0]["content"]
+
+
+def test_delete_cad_preview_removes_file_and_rejects_bad_names():
+    """'Bauteil entfernen' im Frontend räumt das STL-Preview serverseitig auf."""
+    from pathlib import Path
+
+    previews = Path(__file__).resolve().parents[1] / "storage" / "cad_previews"
+    previews.mkdir(parents=True, exist_ok=True)
+    victim = previews / "test_delete_preview.stl"
+    victim.write_text("solid t\nendsolid t\n", encoding="utf-8")
+
+    r = client.delete(f"/cad/preview/{victim.name}")
+    assert r.status_code == 200
+    assert r.json()["deleted"] is True
+    assert not victim.exists()
+
+    # Zweites Löschen ist idempotent, Pfad-Traversal/fremde Endungen werden abgelehnt.
+    assert client.delete(f"/cad/preview/{victim.name}").json()["deleted"] is False
+    assert client.delete("/cad/preview/..%2Fconfig.yaml").status_code == 404
+    assert client.delete("/cad/preview/evil.txt").status_code == 404

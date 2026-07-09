@@ -273,7 +273,7 @@ function GearSketch({ gear, raw }) {
   );
 }
 
-function Inspector({ gear, raw = null, preview = null, hasPart = true, onClose }) {
+function Inspector({ gear, raw = null, preview = null, hasPart = true, onClose, onRemovePart }) {
   const { Tabs, ParameterTable, CodeBlock, Badge } = window.VerzahnungsCopilotDesignSystem_c9990b;
   const [tab, setTab] = React.useState('zeichnung');
   const text = (value) => {
@@ -334,6 +334,11 @@ function Inspector({ gear, raw = null, preview = null, hasPart = true, onClose }
       <div className="vc-inspector__head">
         <span className="vc-inspector__title">Inspektor</span>
         <Badge variant="accent">{text(gear.verzahnungstyp)}</Badge>
+        {onRemovePart && (
+          <button className="vc-inspector__close" onClick={onRemovePart} title="Bauteil entfernen" aria-label="Bauteil entfernen">
+            <Icon name="trash-2" size={15} />
+          </button>
+        )}
         <button className="vc-inspector__close" onClick={onClose} aria-label="Schließen"><Icon name="x" size={16} /></button>
       </div>
       <div className="vc-inspector__tabs">
