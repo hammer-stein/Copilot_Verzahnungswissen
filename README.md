@@ -128,6 +128,36 @@ Fragen zum aktuell geladenen Bauteil, etwa „Um welches Zahnrad handelt es sich
 
 ## Paketierung Für Einen Anderen Server
 
+### 0. Schnellster Weg: Neuer Rechner Mit Docker (ohne Conda)
+
+Für einen frischen Rechner (z.B. neuen Mac) ist **keine** Miniconda-, Python- oder
+torch-Installation nötig – alle Abhängigkeiten (Conda/PythonOCC im CAD-Prozessor,
+torch/bge-m3 im RAG-System) stecken in den Docker-Images und bauen sich selbst.
+Auf dem Zielrechner werden nur zwei Programme installiert: **Docker Desktop** und **Ollama**.
+
+```bash
+git clone https://github.com/hammer-stein/Copilot_Verzahnungswissen.git
+cd Copilot_Verzahnungswissen
+cp config.example.yaml config.yaml   # model_name muss zum gezogenen Ollama-Modell passen
+ollama pull llama3.1:8b              # Default der config.example.yaml; auf Apple Silicon flüssig
+                                     # (schwächere Hardware: llama3.2:3b ziehen + model_name anpassen)
+docker compose up --build            # erster Build dauert (Images), danach Start in Sekunden
+```
+
+Danach läuft die GUI unter `http://localhost:8000/` (Checks siehe Abschnitt 6).
+
+Hinweise:
+
+- **Images auf dem Zielrechner bauen, nicht übertragen:** `docker save`-Exporte von einem
+  Intel-Mac laufen auf Apple Silicon nur emuliert (langsam). `docker compose up --build`
+  baut nativ für die jeweilige Architektur.
+- **Wissensbasis:** Der Docker-Qdrant startet leer. Entweder die Dokumente (PDFs/CSVs aus
+  `storage/uploads/` des alten Rechners) über die UI neu hochladen – oder Daten wie in
+  Abschnitt 1 beschrieben mitnehmen.
+- `config.yaml` ist nicht im Repository (gitignored) und muss separat kopiert oder wie oben
+  aus `config.example.yaml` neu erzeugt werden. Im Compose-Betrieb überschreiben die
+  Umgebungsvariablen aus `docker-compose.yml` automatisch Qdrant-/CAD-/Ollama-Adressen.
+
 ### 1. Vor Dem Kopieren Entscheiden: Daten Mitnehmen Oder Neu Aufbauen
 
 Die Wissensbasis besteht aus mehreren Teilen:

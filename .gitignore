@@ -38,3 +38,4 @@ cad_processor/_acc_*
 # IDE
 .idea/
 .vscode/
+.claude/settings.local.json
