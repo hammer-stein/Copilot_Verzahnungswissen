@@ -28,6 +28,7 @@ from app.implementations.answer_generator_ollama import (
     maybe_answer_cad_identity_question,
     resolve_format_instruction,
 )
+from app.implementations.table_qa import maybe_answer_table_filter_question
 from app.pipeline.agents.reviewer import ReviewerAgent, ReviewResult
 from app.pipeline.agents.solver import SolverAgent
 
@@ -85,8 +86,11 @@ class MultiAgentAnswerGenerator:
 
             trace: list[AgentStep] = [self._orchestrator_step(sources)]
 
+            # Deterministische Fast-Paths (kein LLM-Call): CAD-Identifikation vor
+            # Tabellen-Filter – kleine Modelle zählen Tabellentreffer sonst unvollständig auf.
             fast_answer = maybe_answer_cad_identity_question(question, cad_metadata)
-            if fast_answer:
+            table_answer = None if fast_answer else maybe_answer_table_filter_question(question, chunks, answer_format)
+            if fast_answer or table_answer:
                 if progress_callback:
                     progress_callback("answer_generation_start")
                     progress_callback("answer_generation_done")
@@ -94,10 +98,15 @@ class MultiAgentAnswerGenerator:
                     progress_callback("improvement_skipped")
                 trace.append({
                     "agent": "solver",
-                    "title": "CAD-Identifikation",
-                    "content": "Der Zahnradtyp wurde direkt aus dem CAD-Feld gear_type bestimmt.",
+                    "title": "CAD-Identifikation" if fast_answer else "Tabellen-Filter",
+                    "content": (
+                        "Der Zahnradtyp wurde direkt aus dem CAD-Feld gear_type bestimmt."
+                        if fast_answer
+                        else "Treffer deterministisch aus den Tabellenzeilen gefiltert (exaktes Wert-Matching, ohne LLM)."
+                    ),
                     "status": "ok",
                 })
+                fast_answer = fast_answer or table_answer
                 return {
                     "question": question,
                     "answer_text": fast_answer,

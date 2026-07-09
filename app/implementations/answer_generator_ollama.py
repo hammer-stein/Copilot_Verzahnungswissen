@@ -16,6 +16,7 @@ from typing import Any, Callable, Optional
 from app.core.types import Answer, AnswerSource, RetrievedChunk
 from app.core.utils import stable_json_dumps
 from app.implementations.ollama_client import OllamaClient
+from app.implementations.table_qa import maybe_answer_table_filter_question
 
 ProgressCallback = Callable[[str], None]
 
@@ -339,7 +340,10 @@ class OllamaAnswerGenerator:
         # Multi-Agenten-Generator genutzt – garantiert identische Quellennummerierung).
         chunks_block, sources = build_chunks_block_and_sources(chunks)
 
-        fast_answer = maybe_answer_cad_identity_question(question, cad_metadata)
+        # Deterministische Fast-Paths: CAD-Identifikation vor Tabellen-Filter. Beide
+        # umgehen das LLM – kleine Modelle zählen Tabellentreffer sonst unvollständig auf.
+        fast_answer = maybe_answer_cad_identity_question(question, cad_metadata) or \
+            maybe_answer_table_filter_question(question, chunks, answer_format)
         if fast_answer:
             if progress_callback:
                 progress_callback("answer_generation_start")
