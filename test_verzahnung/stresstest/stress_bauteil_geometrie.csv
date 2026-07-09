@@ -1,0 +1,4 @@
+Teilenummer;Bezeichnung;Typ;Modul (mm);Zähnezahl;Eingriffswinkel [°];beta;Profilverschiebung;d;da;df;b;Werkstoff;Härte;Qualität;Schmierstoff;Zeichnungs-Nr
+INFO;Vorlage – Zeile nicht ausfüllen;-;-;-;-;-;-;-;-;-;-;-;-;-;-;-
+ZR-2044-B;Schrägstirnrad Abtrieb;Schrägstirnrad;2,75 mm;38;20°;15,5;+0,25;104,50;111,2;97,9;42;18CrNiMo7-6;60 HRC;DIN 6;Klüberplex BE 31-102;ZN-4711
+ZR-2045-A;Ritzel Abtrieb (Gegenrad);Stirnrad;2,75;19;20;0;-0,15;52,25;57,3;45,8;45;18CrNiMo7-6;60 HRC;DIN 7;Klüberplex BE 31-102;ZN-4712

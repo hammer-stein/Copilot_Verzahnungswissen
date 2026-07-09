@@ -1,0 +1,48 @@
+Bauteil_ID,Bezeichnung,Menge,Werkstoff,Modul_mm,Zaehnezahl,Oberflaechenhaerte,Norm,Bemerkung
+G-001,Stirnrad Antriebswelle,1,16MnCr5,3.0,24,58 HRC,DIN 3960,einsatzgehärtet
+G-002,Stirnrad Zwischenwelle,1,16MnCr5,3.0,48,58 HRC,DIN 3960,-
+G-003,Ritzel Zwischenwelle,1,16MnCrS5,2.4,17,60 HRC,DIN 3960,-
+G-004,Hohlrad Ausgangsstufe,1,42CrMo4,2.4,98,52 HRC,DIN 3960,vergütet
+G-005,Stirnrad Nebenabtrieb,2,20MnCr5,2.0,31,59 HRC,DIN 3960,-
+G-006,Ritzel Nebenabtrieb,1,20MnCr5,2.0,24,59 HRC,DIN 3960,-
+G-007,Kegelrad Satz A,1,16MnCr5,3.5,13,58 HRC,DIN 3965,"einsatzgehärtet; angelassen"
+G-008,Tellerrad Satz A,1,16MnCr5,3.5,41,58 HRC,DIN 3965,-
+G-009,Schneckenrad,1,GZ-CuSn12,4.0,30,-,DIN 3975,Bronze
+G-010,Schnecke,1,16MnCr5,4.0,2,56 HRC,DIN 3975,zweigängig
+G-011,Zahnstange Verstellung,1,C45E,2.0,-,45 HRC,DIN 3962,gefräst
+G-012,"Zwischenrad, geschliffen",1,42CrMo4,2.4,53,54 HRC,DIN 3960,-
+W-101,Antriebswelle,1,42CrMo4,-,-,vergütet,DIN 748,-
+W-102,Welle,1,C45,-,-,normalisiert,-,Rohteil
+W-103,Ausgangswelle,1,42CrMo4,-,-,vergütet,-,-
+W-104,Zwischenwelle lang,1,16MnCr5,-,-,einsatzgehärtet,-,-
+W-105,Zwischenwelle kurz,1,16MnCr5,-,-,einsatzgehärtet,-,-
+W-106,Steckwelle Nebenabtrieb,1,C45E,-,-,-,-,n/a
+W-107,Vorgelegewelle,1,31CrMoV9,-,-,nitriert,-,gasnitriert
+W-108,Hohlwelle,1,42CrMoS4,-,-,vergütet,-,-
+L-201,Rillenkugellager 6205-2RS,2,100Cr6,-,-,Standard,DIN 625,-
+L-202,Rillenkugellager 6207,2,100Cr6,-,-,Standard,DIN 625,-
+L-203,Kegelrollenlager 30206,2,100Cr6,-,-,Standard,DIN 720,X-Anordnung
+L-204,"Pendelrollenlager, zweireihig",1,100CrMn6,-,-,Standard,DIN 635,-
+L-205,Nadellager NK 20/16,4,100Cr6,-,-,Standard,-,-
+L-206,Axial-Rillenkugellager 51105,1,100Cr6,-,-,Standard,DIN 711,-
+D-301,Wellendichtring 25x40x7,2,NBR,-,-,Standard,DIN 3760,-
+D-302,Wellendichtring 30x47x7,1,FKM,-,-,Standard,DIN 3760,Hochtemperatur
+D-303,Dichtung (FKM) Deckel,1,FKM,-,-,-,-,-
+D-304,Gehäusedichtung,1,AFM 34,-,-,flüssig,-,-
+D-305,O-Ring 45x2.5,3,NBR,-,-,Standard,DIN 3771,-
+H-401,Getriebegehäuse Unterschale,1,EN-GJL-250,-,-,sandgestrahlt,DIN EN 1561,-
+H-402,Getriebegehäuse Oberschale,1,EN-GJL-250,-,-,sandgestrahlt,DIN EN 1561,-
+H-403,Lagerdeckel vorn,2,EN-GJS-400-15,-,-,-,DIN EN 1563,-
+H-404,Inspektionsdeckel,1,AlSi9Cu3,-,-,pulverbeschichtet,-,-
+S-501,Zylinderschraube M8x35,24,Stahl 8.8,-,-,galvanisch verzinkt,DIN 912,-
+S-502,Zylinderschraube M10x40,12,Stahl 10.9,-,-,galvanisch verzinkt,DIN 912,-
+S-503,Sechskantmutter M8,24,Stahl 8.8,-,-,verzinkt,DIN 934,-
+S-504,Passfeder A 8x7x32,3,C45E,-,-,Standard,DIN 6885,-
+S-505,Passfeder A 6x6x20,2,C45E,-,-,Standard,DIN 6885,-
+S-506,Sicherungsring 25x1.2,4,Federstahl,-,-,-,DIN 471,-
+S-507,Scheibe 8.4,24,A2-70,-,-,-,DIN 125,Edelstahl
+S-508,Stiftschraube M6x16,6,A2-70,-,-,-,DIN 939,-
+S-509,Verschlussschraube G1/2,2,Stahl 8.8,-,-,-,DIN 910,mit Dichtring
+S-510,Entlüftungsventil,1,Messing,-,-,-,-,-
+O-601,Getriebeöl CLP 220,"1,5",Mineralöl,-,-,-,DIN 51517,Liter
+O-602,Fließfett GP 00,"0,8",PAO,-,-,-,DIN 51826,Kilogramm
