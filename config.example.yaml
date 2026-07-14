@@ -123,10 +123,10 @@ retriever:
 
 answer_generator:
   implementation: "multi_agent"   # ÄNDERUNG: "llama_ollama" für klassischen Single-Pass
-  model_name: "llama3.1:8b"     # 8B-Modell; llama3.2:8b existiert in Ollama nicht
+  model_name: "llama3.2:3b"     # Optional für mehr Qualität: llama3.1:8b
   ollama_url: "http://localhost:11434"
   timeout_s: 180
-  max_tokens: 800
+  max_tokens: 1200
   temperature: 0.2
   # --- nur für implementation: "multi_agent" ---
   solver_prompt_path: "prompts/solver_prompt.txt"

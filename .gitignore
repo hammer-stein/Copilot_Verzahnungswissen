@@ -24,6 +24,7 @@ storage/
 .cache/
 cad_processor/_acc_*
 *.pre-merge.bak
+test_verzahnung/archiv/
 
 # LaTeX
 *.aux

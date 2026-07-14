@@ -467,7 +467,12 @@ class TestGearHints:
 
     def test_all_types_have_norms(self):
         for gear_type, knowledge in GEAR_KNOWLEDGE.items():
-            assert len(knowledge.norms) > 0, f"{gear_type}: keine Normen definiert"
+            if gear_type == "ratchet":
+                # Sperrräder sind keine Wälzgetriebe und besitzen deshalb keine
+                # eigenständige Verzahnungsnorm. Diese Ausnahme ist beabsichtigt.
+                assert knowledge.norms == []
+            else:
+                assert len(knowledge.norms) > 0, f"{gear_type}: keine Normen definiert"
 
     def test_spur_has_din_867(self):
         assert "DIN 867" in GEAR_KNOWLEDGE["spur"].norms
