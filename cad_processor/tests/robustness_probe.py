@@ -26,8 +26,8 @@ from gear_metrology import extract_metrology
 
 # Zu vergleichende Kerngrößen
 KEYS = ["num_teeth", "module_mm", "tip_diameter_mm", "root_diameter_mm",
-        "is_bevel", "is_ratchet", "is_internal", "cone_angle_deg",
-        "face_width_mm", "bore_diameter_mm"]
+        "is_bevel", "is_ratchet", "is_internal", "is_crown", "cone_angle_deg",
+        "face_width_mm", "bore_diameter_mm", "tooth_depth_mm"]
 
 
 def _transform(shape, rx_deg, ry_deg, rz_deg, tx, ty, tz):

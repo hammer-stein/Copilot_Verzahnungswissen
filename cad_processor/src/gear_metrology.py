@@ -36,10 +36,11 @@ from OCC.Core.BRepGProp import brepgprop
 from OCC.Core.GCPnts import GCPnts_AbscissaPoint
 from OCC.Core.GeomAbs import GeomAbs_Cone, GeomAbs_Cylinder
 from OCC.Core.GProp import GProp_GProps
+from OCC.Core.IntCurvesFace import IntCurvesFace_ShapeIntersector
 from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_VERTEX
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopoDS import topods
-from OCC.Core.gp import gp_Pln, gp_Pnt, gp_Dir
+from OCC.Core.gp import gp_Lin, gp_Pln, gp_Pnt, gp_Dir
 
 _log = logging.getLogger("gear_metrology")
 
@@ -71,6 +72,21 @@ SLOW_SECTION_S = 3.0
 # Mindest-Bandlänge für den Früh-Stopp: lang genug für stabile Median-Maße
 # (Kopf-/Fußkreis, Modul), aber erreichbar bevor zu viele langsame Schnitte laufen.
 EARLY_STOP_BAND = 6
+
+# ── Kronrad/Planrad (face gear) ───────────────────────────────
+# Zähne liegen auf der STIRNFLÄCHE einer flachen Scheibe (axiale Modulation z(θ)
+# bei festem Radius), nicht auf einem Zylinder/Kegel. Der radiale Messkern findet
+# daher kein Band → dieser Sonderpfad misst die Zahnhöhe z(θ) per achsparallelem
+# Strahlwurf (IntCurvesFace) über mehrere Radien und identifiziert den Zahnkranz
+# als zusammenhängendes RADIALES Band konstanter Zähnezahl auf EINER der Stirnflächen.
+CROWN_MAX_ASPECT = 0.60     # flache Scheibe: length/(2·rmax) darunter (echtes Teil ≈ 0.47)
+CROWN_MIN_TEETH = 6         # Mindest-Zähnezahl (unter 6 zu unsicher)
+CROWN_DEPTH_FRAC = 0.06     # Zahntiefe-Amplitude ≥ dieser Anteil der Scheibendicke
+CROWN_MIN_BAND = 3          # Mindestzahl benachbarter Radien mit gleicher Zähnezahl
+CROWN_NA = 360              # Winkelauflösung des Strahlwurfs (max. Zähne = NA//6)
+# Radien-Stützstellen als Anteil von rmax — außen dichter, da Stirnzähne oft im
+# äußeren Zahnkranz liegen (echtes Teil: Zähne bei 0.85…0.97·rmax).
+CROWN_RADII_FRACS = (0.40, 0.50, 0.58, 0.66, 0.72, 0.78, 0.82, 0.86, 0.89, 0.92, 0.95, 0.97)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -233,20 +249,30 @@ def _radial_profile(pts: List[Tuple[float, float]], NA: int, outer: bool):
     return grid, coverage
 
 
-def _count_periods(prof: List[float], rel_min: float = 0.02) -> Tuple[int, float]:
+def _count_periods(prof: List[float], rel_min: float = 0.02,
+                   amp_floor: Optional[float] = None) -> Tuple[int, float]:
     """
-    Zählt die Perioden (Zähne) im Radialprofil über Schwellwert-Übergänge mit
-    Hysterese. Gibt (Periodenzahl, Amplitude) zurück.
+    Zählt die Perioden (Zähne) im Profil über Schwellwert-Übergänge mit Hysterese.
+    Gibt (Periodenzahl, Amplitude) zurück.
 
-    Ein glatter Kreis (Bohrung, Nabe, Felgenrand) hat eine verschwindend kleine
-    relative Amplitude und liefert daher 0 Perioden — nur eine echte Verzahnung
-    mit Amplitude ≥ rel_min·r_mittel wird gezählt.
+    Zwei Amplituden-Gates:
+    - amp_floor=None (Standard, radiales r(θ)-Profil): relative Schwelle
+      amp ≥ rel_min·r_mittel — ein glatter Kreis (Bohrung, Nabe, Felgenrand) hat eine
+      verschwindend kleine relative Amplitude und liefert 0 Perioden.
+    - amp_floor gesetzt (axiales z(θ)-Profil beim Kronrad): absolute Schwelle
+      amp ≥ amp_floor. Nötig, weil z um den Schwerpunkt gemessen wird (Mittel ≈ 0),
+      wodurch das mittelwert-relative Gate bedeutungslos wäre; die Schwelle knüpft
+      die Zahntiefe stattdessen an die Scheibendicke.
     """
     lo, hi = min(prof), max(prof)
     amp = hi - lo
-    mean = sum(prof) / len(prof)
-    if mean <= 0 or amp < rel_min * mean:
-        return 0, amp
+    if amp_floor is not None:
+        if amp < amp_floor:
+            return 0, amp
+    else:
+        mean = sum(prof) / len(prof)
+        if mean <= 0 or amp < rel_min * mean:
+            return 0, amp
     NA = len(prof)
     thr_hi, thr_lo = lo + 0.6 * amp, lo + 0.4 * amp
     state, count = "lo", 0
@@ -435,6 +461,149 @@ def _round_module(m_raw: float) -> Tuple[float, bool]:
     return round(m_raw, 3), False
 
 
+# ─────────────────────────────────────────────────────────────
+# Kronrad / Planrad (face gear) — axiale Stirnflächen-Vermessung
+# ─────────────────────────────────────────────────────────────
+
+def _crown_ray_profile(inter, com, axis, u, v, r: float, zmin: float, zmax: float,
+                       NA: int):
+    """
+    Stirnflächen-Höhenprofil z(θ) bei festem Radius r über achsparallele Strahlen
+    (IntCurvesFace_ShapeIntersector). Gibt (z_top, z_bot, coverage) zurück:
+    z_top/z_bot sind die obere/untere Materialgrenze je Winkel-Stützstelle
+    (Zahnkopf- bzw. Rückflächen-Hüllkurve, z = Achs-Koordinate relativ zum
+    Schwerpunkt), leere Winkel werden zirkulär aufgefüllt. Bei Abdeckung < 50 %
+    → (None, None, cov). Strahlwurf ist robuster als BRepAlgoAPI_Section, das bei
+    kleinen/unsauberen B-Reps stark fragmentiert (empirisch am realen Teil bestätigt).
+    """
+    top: List[Optional[float]] = [None] * NA
+    bot: List[Optional[float]] = [None] * NA
+    hit = 0
+    z0 = zmin - max(1.0, 0.1 * (zmax - zmin))   # Strahlstart deutlich unterhalb des Teils
+    axis_dir = gp_Dir(*axis)
+    for k in range(NA):
+        th = -math.pi + 2 * math.pi * k / NA
+        ct, st = math.cos(th), math.sin(th)
+        px = com[0] + r * (ct * u[0] + st * v[0]) + z0 * axis[0]
+        py = com[1] + r * (ct * u[1] + st * v[1]) + z0 * axis[1]
+        pz = com[2] + r * (ct * u[2] + st * v[2]) + z0 * axis[2]
+        try:
+            inter.Perform(gp_Lin(gp_Pnt(px, py, pz), axis_dir), 0.0, 1e6)
+            n = inter.NbPnt()
+        except Exception:
+            n = 0
+        if n <= 0:
+            continue
+        z_hi, z_lo = -1e18, 1e18
+        for i in range(1, n + 1):
+            p = inter.Pnt(i)
+            zc = ((p.X() - com[0]) * axis[0] + (p.Y() - com[1]) * axis[1]
+                  + (p.Z() - com[2]) * axis[2])
+            z_hi = zc if zc > z_hi else z_hi
+            z_lo = zc if zc < z_lo else z_lo
+        top[k], bot[k] = z_hi, z_lo
+        hit += 1
+    cov = hit / NA
+    if cov < 0.5:
+        return None, None, cov
+    present = [i for i in range(NA) if top[i] is not None]
+
+    def _fill(prof: List[Optional[float]]) -> List[float]:
+        out: List[float] = [0.0] * NA
+        for i in range(NA):
+            if prof[i] is not None:
+                out[i] = prof[i]
+            else:
+                j = min(present, key=lambda p: min(abs(p - i), NA - abs(p - i)))
+                out[i] = prof[j]
+        return out
+
+    return _fill(top), _fill(bot), cov
+
+
+def _measure_crown(shape, com, axis, u, v, zmin: float, zmax: float, rmax: float,
+                   NA: int = CROWN_NA) -> Optional[Dict[str, Any]]:
+    """
+    Kronrad-/Planrad-Vermessung. Misst die Zähnezahl über die axiale Höhen-
+    modulation z(θ) der Stirnfläche (Strahlwurf über mehrere Radien) und leitet
+    daraus die Kernparameter ab. Der Zahnkranz ist das längste zusammenhängende
+    RADIEN-Band gleicher Zähnezahl auf EINER Stirnfläche (Zähne können auf der
+    +Achs- oder −Achs-Seite und in einem beliebigen radialen Ring liegen).
+
+    Gibt None zurück, wenn kein stabiler Zahnkranz gefunden wird — dann bleibt der
+    reguläre Messfluss unverändert (kein Kronrad).
+    """
+    length = zmax - zmin
+    if length <= 1e-6 or rmax <= 1e-6:
+        return None
+    amp_floor = CROWN_DEPTH_FRAC * length
+    max_teeth = NA // 6
+
+    inter = IntCurvesFace_ShapeIntersector()
+    inter.Load(shape, 1e-6)
+
+    entries: List[Dict[str, Any]] = []
+    for frac in CROWN_RADII_FRACS:
+        r = frac * rmax
+        top, bot, _cov = _crown_ray_profile(inter, com, axis, u, v, r, zmin, zmax, NA)
+        e: Dict[str, Any] = {"r": r, "top_z": 0, "bot_z": 0, "top_amp": 0.0, "bot_amp": 0.0}
+        if top is not None:
+            tz, tamp = _count_periods(top, amp_floor=amp_floor)
+            bz, bamp = _count_periods(bot, amp_floor=amp_floor)
+            e["top_z"] = tz if CROWN_MIN_TEETH <= tz <= max_teeth else 0
+            e["bot_z"] = bz if CROWN_MIN_TEETH <= bz <= max_teeth else 0
+            e["top_amp"], e["bot_amp"] = tamp, bamp
+        entries.append(e)
+
+    band_top = _longest_band(entries, "top_z")
+    band_bot = _longest_band(entries, "bot_z")
+    face, band = None, None
+    if band_top and (band_bot is None or band_top["len"] >= band_bot["len"]):
+        face, band = "top", band_top
+    elif band_bot:
+        face, band = "bot", band_bot
+    if band is None or band["len"] < CROWN_MIN_BAND:
+        return None
+
+    amp_key = "top_amp" if face == "top" else "bot_amp"
+    band_sec = entries[band["i0"]:band["i1"] + 1]
+    z = int(band["z"])
+    if z <= 0:
+        return None
+    r_inner = band_sec[0]["r"]
+    r_outer = rmax                                   # Zahnköpfe reichen bis zum Außenrand
+    r_ref = 0.5 * (r_inner + r_outer)
+    tooth_depth = round(_median([s[amp_key] for s in band_sec]), 4)
+    d_a = round(2 * r_outer, 4)
+    module_mm, is_norm = _round_module(2 * r_ref / z)
+    pitch_d = round(module_mm * z, 4)
+
+    return {
+        "ok": True,
+        "is_crown": True,
+        "is_bevel": False,
+        "is_internal": False,
+        "is_ratchet": False,
+        "num_teeth": z,
+        "tip_diameter_mm": d_a,
+        "crown_inner_diameter_mm": round(2 * r_inner, 4),
+        "module_mm": module_mm,
+        "module_is_norm": is_norm,
+        "pitch_diameter_mm": pitch_d,
+        "tooth_depth_mm": tooth_depth,
+        "face_width_mm": round(r_outer - r_inner, 4),   # RADIALE Zahnkranzbreite
+        "overall_width_mm": round(length, 4),
+        "toothed_face": face,
+        "root_diameter_mm": None,
+        "helix_angle_deg": None,
+        "cone_angle_deg": None,
+        "axis": axis,
+        "com": com,
+        "band_sections": band["len"],
+        "total_sections": len(entries),
+    }
+
+
 def extract_metrology(shape, n_sections: int = 48, NA: int = 720,
                       time_budget_s: float = 120.0) -> Dict[str, Any]:
     """
@@ -584,6 +753,14 @@ def extract_metrology(shape, n_sections: int = 48, NA: int = 720,
                        (band_in is not None and band_in["len"] >= 3)
         band = band_in if use_internal else band_out
         if band is None or band["len"] < 3:
+            # Kein radialer Zahnkranz → möglicherweise Kronrad/Planrad (Zähne auf der
+            # Stirnfläche, axiale Modulation z(θ)). Nur bei flacher Scheibe versuchen;
+            # gelingt die Stirnflächen-Messung, wird ok=True mit is_crown gesetzt.
+            disk_aspect = length / max(2 * rmax, 1e-9)
+            if disk_aspect < CROWN_MAX_ASPECT:
+                crown = _measure_crown(shape, com, axis, u, v, zmin, zmax, rmax)
+                if crown is not None:
+                    result.update(crown)
             return result
 
         i0, i1 = band["i0"], band["i1"]
@@ -623,6 +800,13 @@ def extract_metrology(shape, n_sections: int = 48, NA: int = 720,
                     cone_angle = snapped
         if gamma is not None:
             is_bevel = True   # Kopfkegel gefunden → sicher Kegelrad (auch Spiral)
+
+        # Hinweis: Ein Kronrad-Sonderfall wird ausschließlich beim FEHLENDEN radialen
+        # Zahnkranz oben abgefangen (Hook A) — dort überschreibt er nie eine gültige
+        # Messung. Ein zusätzlicher Bevel-Override hier wäre riskant (ein flaches
+        # Kegel-/Gehrungsrad mit ebener Rückseite hat disk_aspect ≈ 0.5 und flache
+        # Rückfläche wie ein Planrad), deshalb bewusst NICHT eingebaut, solange keine
+        # Kegelrad-Testdateien zur Absicherung vorliegen.
 
         # Kopfkreisdurchmesser: beim Kegelrad zählt der GROSSE Rand am großen Ende
         # → oberes Perzentil; beim Zylinderrad der Median.
@@ -714,6 +898,7 @@ def extract_metrology(shape, n_sections: int = 48, NA: int = 720,
 
         result.update({
             "ok": True,
+            "is_crown": False,
             "num_teeth": int(z_count),
             "is_internal": bool(use_internal),
             "tip_diameter_mm": d_a,

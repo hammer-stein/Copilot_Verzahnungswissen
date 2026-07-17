@@ -293,6 +293,7 @@ NORM_MAP = {
     "worm_wheel": ["DIN 3975", "ISO 1122-2"],
     "rack":       ["DIN 867", "DIN 3960"],
     "ratchet":    [],   # Sägezahn-Sperrrad — keine eigenständige Verzahnungsnorm
+    "crown":      ["DIN 3960", "DIN 867"],   # Kronrad/Planrad — keine eigene Planrad-Geometrienorm
     "unknown":    ["DIN 867"],
 }
 
@@ -324,6 +325,75 @@ def _snap_miter_cone(gamma_tip: float) -> Optional[float]:
     return nearest if abs(nearest - gamma_tip) <= 7.0 else None
 
 
+def _apply_crown(params: GearParameters, m: dict) -> None:
+    """
+    Übernimmt die Kronrad-/Planrad-Messwerte (axiale Stirnflächen-Vermessung,
+    siehe gear_metrology._measure_crown). Beim Planrad gelten die Evolventen-
+    Zylinderrad-Kenngrößen NICHT:
+      • face_width = RADIALE Zahnkranzbreite (nicht axial),
+      • Zahnhöhe   = axiale Zahntiefe (kein Fußkreis-abgeleitetes Maß),
+      • Modul      = am Bezugsradius (Zahnkranzmitte) — radiusabhängig,
+      • Fußkreis / Eingriffswinkel sind an einem Einzelrad nicht bestimmbar.
+    Zähnezahl und Außendurchmesser sind dagegen direkt und robust gemessen.
+    """
+    z = int(m["num_teeth"])
+    d_a = m["tip_diameter_mm"]
+    mod = m["module_mm"]
+
+    params.gear_type = ParameterValue.make("crown", "", C.DIRECT)
+    params.is_internal_gear = False
+    params.symmetry_type = "rotational"
+    params.extraction_notes["method"] = (
+        "Kronrad/Planrad: axiale Zahnhöhenmodulation z(θ) der Stirnfläche über "
+        "achsparallelen Strahlwurf (herstellerunabhängig)"
+    )
+    params.extraction_notes["crown_inner_diameter_mm"] = m.get("crown_inner_diameter_mm")
+    params.extraction_notes["toothed_face"] = m.get("toothed_face")
+
+    # ── Direkt/robust gemessen ────────────────────────────────
+    params.num_teeth = ParameterValue.make(z, "", C.DIRECT)
+    params.outer_diameter_mm = ParameterValue.make(d_a, "mm", C.DIRECT)
+    if m.get("overall_width_mm"):
+        params.total_width_mm = ParameterValue.make(m["overall_width_mm"], "mm", C.DIRECT)
+
+    # ── Modul am Bezugsradius (Zahnkranzmitte) — bei Planrädern radiusabhängig ──
+    params.module_mm = ParameterValue.make(
+        mod, "mm", C.DIRECT if m.get("module_is_norm") else C.CALC
+    )
+    if m.get("pitch_diameter_mm") is not None:
+        params.pitch_diameter_mm = ParameterValue.make(m["pitch_diameter_mm"], "mm", C.CALC)
+
+    # ── Zahnbreite = RADIALE Zahnkranzbreite (leicht reduzierte Konfidenz) ──
+    params.face_width_mm = ParameterValue.make(m["face_width_mm"], "mm", round(C.CALC - 0.12, 2))
+
+    # ── Axiale Zahntiefe statt Fußkreis-abgeleiteter Zahnhöhe ──
+    if m.get("tooth_depth_mm") is not None:
+        params.tooth_height_mm = ParameterValue.make(m["tooth_depth_mm"], "mm", C.CALC)
+
+    # ── Am Planrad nicht anwendbar / nicht messbar → neutralisieren ──
+    params.root_diameter_mm = None
+    params.addendum_mm = None
+    params.dedendum_mm = None
+    params.profile_shift_x = None
+    params.tooth_thickness_mm = None
+    params.helix_angle_deg = None
+    params.cone_angle_deg = None
+    params.shaft_angle_deg = None
+    if isinstance(params.pressure_angle_deg, ParameterValue):
+        params.pressure_angle_deg.confidence = C.DEFAULT
+
+    params.warnings.append(
+        "Kronrad/Planrad: Zähnezahl und Außendurchmesser sind direkt gemessen. "
+        "face_width = RADIALE Zahnkranzbreite; Modul am Bezugsradius (Zahnkranzmitte, "
+        "radiusabhängig); Zahnhöhe = axiale Zahntiefe. Fußkreis und Eingriffswinkel "
+        "sind an einem Planrad-Einzelrad nicht bestimmbar (α = DIN-Standard 20° angenommen)."
+    )
+
+    print(f"  [Metrologie] Typ=crown  z={z}  m={mod}mm  d_a={d_a}mm  "
+          f"b_radial={m['face_width_mm']}mm  Zahntiefe={m.get('tooth_depth_mm')}mm  "
+          f"Fläche={m.get('toothed_face')}")
+
+
 def _apply_metrology(params: GearParameters, m: dict) -> bool:
     """
     Übernimmt die direkt aus der B-Rep vermessenen Kerngrößen (software-
@@ -333,6 +403,13 @@ def _apply_metrology(params: GearParameters, m: dict) -> bool:
     """
     if not m or not m.get("ok"):
         return False
+
+    # Kronrad/Planrad: eigener Mappingpfad. Die Evolventen-/Zylinderrad-Formeln
+    # (calculate_tooth_profile, Fußkreis, Zahnhöhe = 2.25·m …) gelten hier NICHT;
+    # außerdem ist root_diameter_mm beim Kronrad None. Daher vor den Zugriffen unten.
+    if m.get("is_crown"):
+        _apply_crown(params, m)
+        return True
 
     z = m["num_teeth"]
     d_a = m["tip_diameter_mm"]
@@ -368,7 +445,20 @@ def _apply_metrology(params: GearParameters, m: dict) -> bool:
     else:
         gear_type = "spur"
 
-    params.gear_type = ParameterValue.make(gear_type, "", C.DIRECT)
+    # Plausibilitäts-Gate: Auch Mehrkante (Sechskant-Schraubenkopf, Vierkant …)
+    # liefern eine saubere radiale Periodizität – z < 8 ist bei echten Zahnrädern
+    # extrem selten (Ground-Truth-Minimum: z = 15), bei Formelementen aber typisch.
+    # Ohne dieses Gate würde ein Sechskant selbstsicher als "spur, z=6, 92 %"
+    # ausgegeben und die RAG-Anwendung (follow_cad) würde darauf bauen.
+    type_conf = C.DIRECT
+    if z is not None and z < 8:
+        type_conf = C.HEURISTIC
+        params.warnings.append(
+            f"Sehr niedrige Zähnezahl (z={int(z)}) – die Periodizität kann von einem "
+            f"Mehrkant/Formelement stammen; Verzahnungstyp unsicher"
+        )
+
+    params.gear_type = ParameterValue.make(gear_type, "", type_conf)
     params.is_internal_gear = is_internal
     params.symmetry_type = "rotational"
     params.extraction_notes["method"] = (
@@ -540,7 +630,12 @@ def analyze_gear_geometry(
         gear_type, is_internal, cone_angle = detect_gear_type(
             cylinders, planes, cones, tori, outer_d, face_w, total_faces
         )
-        params.gear_type = ParameterValue.make(gear_type, "", round(C.DIRECT - 0.04, 2))
+        # C.CALC statt (C.DIRECT − 0.04): detect_gear_type ist eine grobe
+        # Flächen-Heuristik, keine Messung. 0.88 lag ÜBER der follow_cad-Schwelle
+        # (0.85) der RAG-Anwendung – ein heuristisch geratener Typ hätte dieselbe
+        # Beweiskraft gehabt wie die echte Querschnitts-Vermessung. Heuristik
+        # gehört in die Warn-Zone (0.82), nicht in die Verlass-dich-drauf-Zone.
+        params.gear_type = ParameterValue.make(gear_type, "", C.CALC)
         params.is_internal_gear = is_internal
         params.cone_angle_deg = (
             ParameterValue.make(cone_angle, "°", C.CALC) if cone_angle is not None else None
@@ -575,6 +670,20 @@ def analyze_gear_geometry(
                 params.overall_confidence = min(params.overall_confidence, 0.5)
                 params.warnings.append("Zahnzahl konnte nicht automatisch erkannt werden")
                 print("  Zahnzahl z:        nicht erkannt")
+                # Ehrlicher Unknown-Pfad: "spur" ist in detect_gear_type der
+                # Sammelbehälter (jede Box/jeder Deckel landet dort). Ohne JEDE
+                # Zahn-Evidenz (keine Zähnezahl ermittelbar) ist dieser Typ
+                # geraten – dann lieber "unknown" mit niedriger Konfidenz als
+                # selbstsicher-falsch. Strukturell erkannte Typen (rack, worm,
+                # internal, bevel – echte Flächen-Signale) bleiben unberührt.
+                if gear_type == "spur":
+                    gear_type = "unknown"
+                    params.gear_type = ParameterValue.make("unknown", "", C.HEURISTIC)
+                    params.warnings.append(
+                        "Verzahnungstyp konnte nicht sicher bestimmt werden – "
+                        "das Bauteil ist möglicherweise kein Zahnrad"
+                    )
+                    print("  Zahnrad-Typ:       unknown (keine Zahn-Evidenz)")
 
         # ── Modul berechnen ────────────────────────────────────────────
         module_mm = None
@@ -666,6 +775,19 @@ def analyze_gear_geometry(
     if _conf_vals:
         computed = round(math.exp(sum(math.log(v) for v in _conf_vals) / len(_conf_vals)), 3)
         params.overall_confidence = min(params.overall_confidence, computed)
+
+    # Ehrlichkeits-Deckel (Backstop): Wackelt die GESAMTanalyse (viele fehlende/
+    # Default-Parameter → overall < 0.5), darf der Verzahnungstyp keine hohe
+    # Einzel-Konfidenz behaupten. Sonst stützt die RAG-Anwendung (follow_cad ab
+    # 85 %) ihre Antwort selbstsicher auf einen Typ, dessen übrige Kennwerte das
+    # System selbst nicht glaubt (real beobachtet: Quader → "spur, 88 %").
+    if params.overall_confidence < 0.5 and isinstance(params.gear_type, ParameterValue) \
+            and (params.gear_type.confidence or 0) > C.HEURISTIC:
+        params.gear_type = ParameterValue.make(params.gear_type.value, "", C.HEURISTIC)
+        params.warnings.append(
+            "Typ-Konfidenz herabgestuft: Gesamtanalyse zu unsicher "
+            f"(overall_confidence={params.overall_confidence:.2f})"
+        )
 
     # ── Masse schätzen ─────────────────────────────────────────────
     vol = _val(params.volume_mm3) if params.volume_mm3 else 0.0

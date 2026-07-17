@@ -462,10 +462,13 @@ class TestDetectGearTypeV2:
 class TestGearHints:
 
     def test_all_types_have_knowledge(self):
-        for gear_type in ("spur", "helical", "bevel", "worm", "worm_wheel", "internal", "rack"):
+        for gear_type in ("spur", "helical", "bevel", "worm", "worm_wheel",
+                          "internal", "rack", "crown"):
             assert gear_type in GEAR_KNOWLEDGE, f"{gear_type} fehlt in GEAR_KNOWLEDGE"
 
     def test_all_types_have_norms(self):
+        # ratchet hat BEWUSST keine Normen (Sägezahn-Sperrrad: keine eigenständige
+        # Verzahnungsnorm, konsistent zu NORM_MAP["ratchet"] = []).
         for gear_type, knowledge in GEAR_KNOWLEDGE.items():
             if gear_type == "ratchet":
                 # Sperrräder sind keine Wälzgetriebe und besitzen deshalb keine
@@ -526,3 +529,183 @@ class TestGearHints:
         hints = generate_gear_hints(params)
         opt_hints = [h["hint"] for h in hints["optimization"]]
         assert any("Axialkraft" in h for h in opt_hints)
+
+
+# ─────────────────────────────────────────────
+# Kronrad / Planrad (face gear)
+# ─────────────────────────────────────────────
+
+from gear_metrology import _count_periods           # noqa: E402
+from geometry_analyzer import _apply_crown           # noqa: E402
+
+
+class TestCrownToothCounter:
+    """Der axiale z(θ)-Zähnezähler (_count_periods mit amp_floor) für Planräder."""
+
+    @staticmethod
+    def _make_crown_profile(z, depth, base=0.0, NA=720):
+        """Periodisches Höhenprofil z(θ) mit z Zähnen, Spitze-Tal-Amplitude = depth (Dreieckwelle)."""
+        prof = []
+        for k in range(NA):
+            frac = ((k / NA) * z) % 1.0
+            tri = 1.0 - abs(2.0 * frac - 1.0)   # 0 → 1 → 0 je Zahn
+            prof.append(base + depth * tri)
+        return prof
+
+    def test_counts_19_teeth(self):
+        prof = self._make_crown_profile(19, depth=1.0)
+        z, amp = _count_periods(prof, amp_floor=0.05 * 8.0)
+        assert z == 19
+        assert abs(amp - 1.0) < 1e-6
+
+    def test_counts_24_teeth(self):
+        prof = self._make_crown_profile(24, depth=0.8)
+        z, _ = _count_periods(prof, amp_floor=0.05 * 8.0)
+        assert z == 24
+
+    def test_flat_face_is_zero(self):
+        # Konstante Höhe (Scheibe/Unterlegscheibe ohne Zähne) → 0 Perioden
+        z, _ = _count_periods([0.5] * 720, amp_floor=0.05 * 8.0)
+        assert z == 0
+
+    def test_amp_floor_rejects_shallow_noise(self):
+        # Amplitude 0.05 << Floor 0.4 (Fasen-/Messrauschen) → 0
+        prof = self._make_crown_profile(19, depth=0.05)
+        z, _ = _count_periods(prof, amp_floor=0.05 * 8.0)
+        assert z == 0
+
+    def test_amp_floor_none_is_backward_compatible(self):
+        # Ohne amp_floor gilt weiter das mittelwert-relative Gate (radiales r(θ))
+        radial = [10.0 + (1.0 if (k // 18) % 2 == 0 else 0.0) for k in range(720)]
+        z_default, _ = _count_periods(radial)
+        z_floor, _ = _count_periods(radial, amp_floor=0.05)
+        assert z_default == z_floor and z_default > 0
+
+
+class TestApplyCrown:
+    """_apply_crown übernimmt die Kronrad-Messwerte mit ehrlichen Konfidenzen/Warnungen."""
+
+    @staticmethod
+    def _crown_metrology():
+        return {
+            "ok": True, "is_crown": True, "num_teeth": 19,
+            "tip_diameter_mm": 5.48, "crown_inner_diameter_mm": 4.71,
+            "module_mm": 0.2646, "module_is_norm": True,
+            "pitch_diameter_mm": 5.0274, "tooth_depth_mm": 0.47,
+            "face_width_mm": 0.3836, "overall_width_mm": 2.56,
+            "toothed_face": "bot",
+        }
+
+    def test_gear_type_and_core_values(self):
+        p = GearParameters(source_file="kron.stp")
+        _apply_crown(p, self._crown_metrology())
+        assert p.gear_type.value == "crown"
+        assert p.num_teeth.value == 19
+        assert p.outer_diameter_mm.value == 5.48
+        assert p.is_internal_gear is False
+        assert assign_norm_reference("crown")  # Normreferenz vorhanden
+
+    def test_non_applicable_params_are_none(self):
+        p = GearParameters(source_file="kron.stp")
+        _apply_crown(p, self._crown_metrology())
+        # Fußkreis / Evolventenmaße / Schrägung sind am Planrad nicht bestimmbar
+        assert p.root_diameter_mm is None
+        assert p.addendum_mm is None
+        assert p.dedendum_mm is None
+        assert p.helix_angle_deg is None
+        assert p.cone_angle_deg is None
+
+    def test_pressure_angle_default_and_warning(self):
+        p = GearParameters(source_file="kron.stp")
+        _apply_crown(p, self._crown_metrology())
+        assert p.pressure_angle_deg.confidence == C.DEFAULT
+        assert any("Planrad" in w or "Kronrad" in w for w in p.warnings)
+
+    def test_face_width_is_radial_value(self):
+        p = GearParameters(source_file="kron.stp")
+        _apply_crown(p, self._crown_metrology())
+        assert p.face_width_mm.value == 0.3836
+        assert p.tooth_height_mm.value == 0.47   # axiale Zahntiefe
+
+
+# ─────────────────────────────────────────────
+# Ehrliche Typ-Konfidenz bei fremden Uploads
+# (Regression gegen "selbstsicher-falsch")
+# ─────────────────────────────────────────────
+
+import pytest
+from geometry_analyzer import analyze_gear_geometry
+from step_parser import parse_step_file
+
+
+class TestHonestTypeConfidence:
+    """Fremde/unbekannte Uploads dürfen NIE mit hoher Konfidenz falsch klassifiziert
+    werden – die RAG-Anwendung stützt ab 85 % Typ-Konfidenz ihre Antworten darauf."""
+
+    @staticmethod
+    def _fake_metrology(z: int) -> dict:
+        d_a = 22.0
+        return {
+            "ok": True, "is_crown": False, "num_teeth": z,
+            "tip_diameter_mm": d_a, "root_diameter_mm": d_a - 4.5,
+            "module_mm": 2.0, "module_is_norm": True,
+            "is_internal": False, "is_bevel": False, "is_ratchet": False,
+            "helix_angle_deg": None, "cone_angle_deg": None,
+            "face_width_mm": 8.0,
+        }
+
+    def _analyze(self, params, *, metrology=None, planes=8, total_edges=18,
+                 cylinders=None, total_faces=8):
+        return analyze_gear_geometry(
+            params, cylinders=cylinders or [], planes=planes, cones=[], tori=[],
+            total_edges=total_edges, edge_helix_data=[], total_faces=total_faces,
+            metrology=metrology,
+        )
+
+    def test_hexagon_like_low_tooth_count_downgrades_type_confidence(self):
+        # Sechskant: saubere Periodizität mit z=6 → darf NICHT als "spur, 92 %" gelten.
+        params = GearParameters(source_file="test.step")
+        self._analyze(params, metrology=self._fake_metrology(6))
+        assert params.gear_type.confidence <= C.HEURISTIC
+        assert any("Mehrkant" in w for w in params.warnings)
+
+    def test_normal_tooth_count_keeps_direct_confidence(self):
+        # Baseline-Regression: echtes Messergebnis (z=24) behält DIRECT 0.92.
+        params = GearParameters(source_file="test.step")
+        self._analyze(params, metrology=self._fake_metrology(24))
+        assert params.gear_type.value == "spur"
+        assert params.gear_type.confidence == C.DIRECT
+
+    def test_non_gear_without_tooth_evidence_returns_unknown(self):
+        # Quader/Zylinder: Metrologie findet nichts, keine Zahnzahl ermittelbar
+        # → ehrlicher unknown-Pfad statt "spur"-Sammelbehälter.
+        params = GearParameters(source_file="test.step")
+        self._analyze(params, metrology={"ok": False}, planes=6, total_edges=12)
+        assert params.gear_type.value == "unknown"
+        assert params.gear_type.confidence <= C.HEURISTIC
+        assert any("nicht sicher bestimmt" in w for w in params.warnings)
+
+    def test_fallback_heuristic_stays_below_follow_cad_threshold(self):
+        # Fallback MIT Zahn-Evidenz (z über Durchmesser-Enumeration): Typ bleibt
+        # erhalten, aber als Heuristik-Ergebnis unter der 85-%-Schwelle.
+        params = GearParameters(source_file="test.step")
+        params.outer_diameter_mm = ParameterValue.make(52.0, "mm", C.DIRECT)
+        self._analyze(params, metrology={"ok": False}, planes=4, total_edges=240)
+        assert params.gear_type.value == "spur"        # Typ bleibt (keine Regression)
+        assert params.num_teeth.value is not None      # Zahn-Evidenz vorhanden
+        assert params.gear_type.confidence == C.CALC   # 0.82 …
+        assert params.gear_type.confidence < 0.85      # … sicher unter follow_cad
+
+
+class TestBrokenFileHandling:
+    def test_parse_step_file_raises_valueerror_for_garbage(self, tmp_path):
+        bad = tmp_path / "kaputt.stp"
+        bad.write_text("Das ist keine STEP-Datei.", encoding="utf-8")
+        with pytest.raises(ValueError):
+            parse_step_file(str(bad), str(tmp_path / "out.json"))
+
+    def test_parse_step_file_raises_valueerror_for_empty(self, tmp_path):
+        empty = tmp_path / "leer.stp"
+        empty.write_bytes(b"")
+        with pytest.raises(ValueError):
+            parse_step_file(str(empty), str(tmp_path / "out.json"))

@@ -429,6 +429,47 @@ GEAR_KNOWLEDGE: dict[str, GearKnowledge] = {
             ),
         ],
     ),
+
+    "crown": GearKnowledge(
+        gear_type="crown",
+        norms=["DIN 3960", "DIN 867"],   # keine eigene Planrad-Geometrienorm
+        applications=[
+            "Kronrad/Planrad: kämmt mit einem Stirnritzel unter ~90° Achsversatz",
+            "Winkeltriebe mit geringer Empfindlichkeit gegen radialen Achsversatz des Ritzels",
+            "Handwerkzeuge, Stellantriebe, Feinwerktechnik, Haushaltsgeräte",
+            "Kostengünstige Alternative zum Kegelradsatz bei kleinen Übersetzungen",
+        ],
+        manufacturing=[
+            "Wälzstoßen/Wälzfräsen mit stirnradartigem Werkzeug (Profil des Gegenritzels)",
+            "Zahnflanken sind konjugiert zum Gegen-Stirnritzel — Werkzeug ≈ Bezugsritzel",
+            "Sintern/Räumen für Großserien in der Feinwerktechnik",
+        ],
+        quality_checks=[
+            "Tragbild-Prüfung mit dem Gegen-Stirnritzel (Kontaktmuster auf der Stirnfläche)",
+            "Axiale Einbaulage des Ritzels prüfen (Kronräder sind gegen radialen Versatz "
+            "tolerant, aber empfindlich gegen axiale Fehllage)",
+            "Axiale Zahntiefe und radiale Zahnkranzbreite kontrollieren",
+        ],
+        optimization_rules=[
+            OptimizationRule(
+                condition=lambda p: (_v(p.num_teeth) or 99) < 17,
+                hint=(
+                    "z < 17 am Kronrad: erhöhte Unterschnitt-/Spitzenbildungsgefahr im "
+                    "Zahnkranz. Größere Zähnezahl oder Profilverschiebung des Gegenritzels prüfen."
+                ),
+                severity="warning",
+            ),
+            OptimizationRule(
+                condition=lambda p: True,
+                hint=(
+                    "Kronrad/Planrad: Eingriffswinkel und Fußkreis sind am Einzelrad nicht "
+                    "messbar (α = 20° angenommen); das Modul ist am Bezugsradius (Zahnkranzmitte) "
+                    "bestimmt und radiusabhängig — für die Paarung das Gegenritzel als Bezug nehmen."
+                ),
+                severity="info",
+            ),
+        ],
+    ),
 }
 
 

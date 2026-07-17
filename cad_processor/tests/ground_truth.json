@@ -2,6 +2,15 @@
   "_comment": "Soll-Parameter für Accuracy-Tests. Zum Hinzufügen: STEP-Dateiname als Key, Parameter als Objekt.",
   "_miter_facewidth_note": "Gehrungs-/Kegelräder: Die Zahnbreite ist das SCHRÄGMASS entlang der Kegelmantellinie. Aus achsnormalen Querschnitten ist sie nur näherungsweise bestimmbar (abhängig von Bandlänge und — bei Achswinkel<90° — vom Rückenkegel) und wird daher für die Gehrungsräder NICHT als Soll geführt (analog zum Kegelrad-Fußkreis). Der Wert wird trotzdem mit niedriger Konfidenz ausgegeben.",
   "_ratchet_note": "Ratschen-/Sperrräder (Sägezahnkranz) sind KEINE Evolventen-Zahnräder: Modul, Teilkreis, Eingriffs-/Schrägungswinkel sind bedeutungslos und werden daher NICHT als Soll geführt. Geometrisch belastbar (und hier geprüft) sind: Typ, Zähnezahl z, Außendurchmesser, Bohrung (For-Shaft-Diameter), Sägezahn-Breite (Face Width) und Gesamtbreite. Die Naben-Breite (Hub Width) wird NICHT als Soll geführt: Der Naben-Bund hat einen verrundeten Fuß, sodass die katalogseitige Hub Width (Bund-Überstand bis zur Radkörper-Fläche, = Overall − Face Width) länger ist als die rein zylindrische Mantelfläche. Der Naben-Durchmesser ist dagegen exakt extrahierbar und wird geprüft.",
+  "_crown_note": "Kronrad/Planrad (face gear): Zähne auf der Stirnfläche, axiale Modulation z(θ). Als Soll geführt und exakt geprüft werden nur Typ (crown) und Zähnezahl z (FFT-verifiziert). NICHT als Soll geführt (nur ungefähr/konventionsabhängig): outer_diameter (Zahnkopf-Außenrand ≈ 5.48mm gemessen), face_width = RADIALE Zahnkranzbreite (≈0.38mm), module am Bezugsradius (radiusabhängig, ≈0.26mm), overall_width = Scheibendicke (≈2.56mm). Fußkreis und Eingriffswinkel sind am Einzelrad nicht bestimmbar (α = 20° angenommen).",
+
+  "Kronenrad.stp": {
+    "_notes": "Kronrad/Planrad (Teil 6797034_ET011). Zähne auf der Stirnfläche (bot), gemessen über achsparallelen Strahlwurf z(θ). z=19 per FFT bestätigt. Nur Typ und z als Soll geprüft; Durchmesser/Modul/Breite sind konvention-/messabhängig (siehe _crown_note) und daher nicht als Soll geführt.",
+    "gear_type": "crown",
+    "is_internal_gear": false,
+    "num_teeth": 19,
+    "pressure_angle_deg": 20.0
+  },
   "_freecad_settings": {
     "workbench": "FCGear",
     "module": "Eingegebener Wert m",
