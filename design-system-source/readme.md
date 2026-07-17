@@ -179,7 +179,7 @@ If you have a house icon set, replace Lucide and update this section.
 Root:
 - `styles.css` — global entry point (link this one file). Imports all tokens + fonts + base.
 - `readme.md` — this guide.
-- `SKILL.md` — Agent-Skill wrapper for use in Claude Code.
+- `SKILL.md` — Kurzreferenz des Design-Systems für automatisierte Editor-Werkzeuge.
 
 Tokens (`tokens/`):
 - `fonts.css` · `colors.css` · `typography.css` · `spacing.css` · `base.css`

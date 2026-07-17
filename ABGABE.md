@@ -5,7 +5,7 @@ und Fertigung (FastAPI + Qdrant + lokales LLM via Ollama, alles per Docker Compo
 
 ## ✅ Die Wissensbasis ist bereits vorbefüllt — KEIN Neu-Indexieren nötig
 
-**181 Dokumente** (Normen + Fachliteratur) sind fertig indexiert und liegen als
+**180 Dokumente** (Normen + Fachliteratur) sind fertig indexiert und liegen als
 Vektor-Index im Projektordner unter **`qdrant_storage/`**. Nach dem Start ist die
 Wissensbasis sofort nutzbar — der Prüfer muss **nichts** hochladen oder indexieren.
 
@@ -36,7 +36,7 @@ cp config.example.yaml config.yaml
 docker compose up --build
 
 # 4) Browser öffnen:
-#    http://localhost:8000   → 181 Dokumente sind bereits in der Wissensbasis
+#    http://localhost:8000   → 180 Dokumente sind bereits in der Wissensbasis
 ```
 
 **Beim allerersten Start** wird zusätzlich das Embedding-Modell `BAAI/bge-m3`
@@ -49,14 +49,14 @@ docker compose up --build
 
 | Ordner/Datei | Inhalt | Pflicht |
 |---|---|---|
-| `qdrant_storage/` | **Vorbefüllter Vektor-Index** (181 Dok.) | **ja** — sonst leere Wissensbasis |
+| `qdrant_storage/` | **Vorbefüllter Vektor-Index** (180 Dok.) | **ja** — sonst leere Wissensbasis |
 | `storage/` | Die 258 Roh-Dokumente (PDFs) + Ordnerstruktur + Upload-Historie | ja |
 | `config.yaml` | Konfiguration (Modelle, Ports, Retrieval-Parameter) | ja |
 | `app/`, `cad_processor/`, `frontend/`, `prompts/`, `docker-compose.yml`, … | Quellcode & Setup | ja |
 
 ## Gut zu wissen
 
-- **181 von 258 Dokumenten sind indexiert.** Die restlichen ~77 sind die *größten*
+- **180 von 258 Dokumenten sind indexiert.** Die restlichen ~77 sind die *größten*
   Dateien (umfangreiche Standards + Lehrbücher, z. B. „Roloff & Matek" mit 280 MB) —
   sie wurden auf dem CPU-Rechner aus Zeit-/Speichergründen (Out-of-Memory) nicht
   mit-indexiert. **Alle 258 Roh-PDFs liegen vollständig in `storage/uploads/`**

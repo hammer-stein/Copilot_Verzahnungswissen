@@ -48,7 +48,7 @@ cp config.example.yaml config.yaml
 Ollama installieren und das konfigurierte Modell laden:
 
 ```bash
-ollama pull llama3.2:3b
+ollama pull qwen3:8b
 ```
 
 Falls Ollama nicht bereits als Dienst läuft, in einem eigenen Terminal starten:
@@ -88,7 +88,7 @@ Anwendung beenden:
 docker compose down
 ```
 
-Die Wissensbasis bleibt dabei im Docker-Volume `qdrant_data` und unter `storage/` erhalten. Nur `docker compose down -v` löscht auch die Docker-Volumes.
+Die Wissensbasis bleibt dabei im Projektordner `qdrant_storage/` (Bind-Mount) und unter `storage/` erhalten – sie übersteht `docker compose down` und reist bei einer Ordner-/ZIP-Kopie des Projekts mit.
 
 ## Alternativer lokaler Start mit Conda
 
@@ -114,7 +114,7 @@ python -c "import OCC; print('OCC ok')"
 Ollama starten und das Modell laden:
 
 ```bash
-ollama pull llama3.2:3b
+ollama pull qwen3:8b
 ollama serve
 ```
 
@@ -192,7 +192,7 @@ Folgende Dateien werden absichtlich nicht über Git verteilt:
 | `storage/qdrant/` | Eingebettete Vektordatenbank |
 | `logs/` | Query- und Serverlogs |
 
-Bei einer Abgabe oder Neuinstallation startet die Wissensbasis deshalb leer. Dokumente werden anschließend über die Weboberfläche neu hochgeladen. Sollen vorhandene Daten migriert werden, müssen `storage/` und bei Docker-Nutzung das Qdrant-Volume separat gesichert werden.
+Bei der Abgabe als Ordner-/ZIP-Kopie reisen `qdrant_storage/` (vorbefüllter Vektor-Index, 180 Dokumente) und `storage/` mit – die Wissensbasis ist dann sofort nutzbar, ohne Neu-Indexierung (Details in `ABGABE.md`). Nur ein reiner Git-Klon startet mit leerer Wissensbasis.
 
 ## API-Auswahl
 
@@ -210,7 +210,15 @@ Bei einer Abgabe oder Neuinstallation startet die Wissensbasis deshalb leer. Dok
 
 ## Tests und Abgabeprüfung
 
-Schnelle statische und funktionale Prüfung:
+Standardlauf – führt beide Testsuiten (RAG und CAD) in ihren Containern aus:
+
+```bash
+./run_tests.sh              # 190 Tests
+./run_tests.sh --live       # zusätzlich Live-E2E gegen den laufenden Stack
+./run_tests.sh --accuracy   # zusätzlich Genauigkeitsmessung gegen die Beispieldaten
+```
+
+Schnelle statische und funktionale Prüfung im lokalen Modus:
 
 ```bash
 python -m compileall app cad_processor/src
@@ -235,6 +243,23 @@ curl http://localhost:6333/healthz
 curl http://localhost:11434/api/tags
 ```
 
+## Beispieldaten und gemessene Genauigkeit
+
+Unter `cad_processor/data/examples/` liegen 29 STEP-Beispielteile (Stirn-, Kegel-, Gehrungs-, Sperr- und Kronräder) mit Soll-Werten in `cad_processor/tests/ground_truth.json`. Die Erkennung erreicht daran, gemessen mit `./run_tests.sh --accuracy`: 28/29 Verzahnungstypen korrekt, rund 96 % der Einzelparameter innerhalb der Toleranz. Die einzige Fehlklassifikation (Zahnstange als Innenverzahnung) wird mit reduzierter Konfidenz und Warnung ausgegeben – erkennbar unsicher statt still falsch. Die Beispieldateien sind bewusst nicht in Git versioniert und reisen mit der Ordnerkopie.
+
+## Architektur und Verlässlichkeit
+
+Das RAG-System ist über Protokolle austauschbar aufgebaut: `app/core/interfaces.py` definiert alle Komponenten (Loader, Chunker, Embedder, Retriever, VectorStore, AnswerGenerator) als Python-Protocols, `app/core/factory.py` ist der einzige Ort, der Implementierungen anhand der `config.yaml` instanziiert. Chunks und Fragen nutzen dieselbe Embedder-Instanz (identischer Vektorraum). Das CAD-JSON des Prozessors wird unverändert (englische Schlüssel) durchgereicht; die Suche wird bei geladenem Bauteil um Zahnradtyp-Begriffe angereichert, die Antwortstufe erhält Frage, Quellen-Chunks und das vollständige CAD-JSON.
+
+Vier deterministische Prüfmechanismen laufen ohne LLM-Beteiligung über jede Antwort:
+
+1. **Bauteil-Abgleich** – nennt die Frage einen anderen Zahnradtyp als die CAD-Analyse, wird konfidenzgestuft gewarnt oder die Antwort auf das tatsächliche Bauteil gelenkt (`part_match` in `config.yaml`).
+2. **Fakten-Verifikation** – Normbezeichnungen und Kennzahlen der Antwort werden gegen die abgerufenen Quellen und Bauteildaten geprüft; Unbelegtes wird markiert.
+3. **Zitier-Transparenz** – jede Antwort weist aus, wie viele Quellen abgerufen und wie viele tatsächlich zitiert wurden (`citation_stats`).
+4. **Toleranz-Plausibilität** – in der Frage genannte Fertigungstoleranzen werden gegen den Modul des Bauteils geprüft (Zahnprofilgröße nach DIN 867).
+
+Konventionen: Quellenverweise erscheinen strikt als `[Q1]`, `[Q2]`, CAD-gestützte Aussagen als `[CAD]`. Alle Antwortformate (kurz, standard, ausführlich, stichpunkte, tabellarisch) werden von den API-Routen unterstützt. Änderungen an der Weboberfläche erfolgen unter `frontend/design-system/`; der Ordner `design-system-source/` ist der eingefrorene Showcase-Stand.
+
 ## Fehlerbehebung
 
 ### `[Errno 61] Connection refused` bei der Antwortgenerierung
@@ -250,7 +275,7 @@ curl http://localhost:11434/api/tags
 
 ```bash
 ollama list
-ollama pull llama3.2:3b
+ollama pull qwen3:8b
 ```
 
 Der Wert unter `answer_generator.model_name` muss exakt dem Namen aus `ollama list` entsprechen.
@@ -284,6 +309,8 @@ tests/                  Automatisierte Tests
 test_verzahnung/        Aktuelle Evaluations- und Stresstestartefakte
 docs/                   Technische Projektdokumentation
 scripts/start_local.sh  Lokaler Start im Conda-Environment
+run_tests.sh            Beide Testsuiten in einem Lauf
+ABGABE.md               Inbetriebnahme mit vorbefüllter Wissensbasis
 config.example.yaml     Versionierte Beispielkonfiguration
 docker-compose.yml      Vollständiger Docker-Start
 ```
