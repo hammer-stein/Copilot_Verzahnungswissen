@@ -208,6 +208,16 @@ class QdrantStore:
             ),
         )
 
+    def clear_all(self) -> None:
+        """
+        Leert die komplette Wissensbasis: Die gesamte Collection wird gelöscht
+        (Mechanismus für DELETE /documents – "Alle löschen"). Sie wird beim nächsten
+        upsert() lazy neu angelegt, sodass eine geleerte Wissensbasis genauso
+        konsistent leer ist wie eine frisch installierte (keine verwaisten Punkte).
+        """
+        if self._collection_exists():
+            self.client.delete_collection(collection_name=self.collection_name)
+
     def set_document_folder(self, doc_hash: str, folder: str) -> None:
         """
         Ordnet ein Dokument einem Ordner zu, indem das Payload-Feld "folder" für ALLE

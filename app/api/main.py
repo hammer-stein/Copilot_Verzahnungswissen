@@ -6,9 +6,10 @@ Komponenten auf und registriert die Endpunkte /upload, /documents (+ /move),
 /folders (CRUD), /ask, /cad/analyze, /cad/random, /cad/examples.
 
 Anfrage-Fluss pro Frage (CAD-aware RAG):
-  1. HybridRetriever sucht mit der Originalfrage in Qdrant
-  2. AnswerGenerator beantwortet die Frage aus den Chunks + dem vollen CAD-JSON
-     (das CAD-JSON fließt erst in der Antwortstufe ein, nicht ins Retrieval)
+  1. HybridRetriever sucht mit der Nutzerfrage in Qdrant; ist ein Bauteil geladen,
+     wird die Suche um Zahnradtyp-Begriffe angereichert (app/core/cad_terms.py),
+     damit bauteilspezifische Literatur vor generischen Treffern rankt
+  2. AnswerGenerator beantwortet die ORIGINALFRAGE aus den Chunks + dem vollen CAD-JSON
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ import os
 import re
 import threading
 import uuid
+
+import httpx  # Upstream-Fehler des cad_processor sauber an die GUI durchreichen
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -29,9 +32,23 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from app.core.cad_terms import (
+    assess_type_mismatch,
+    cad_retrieval_terms,
+    mismatch_ask_back_answer,
+    mismatch_followed_cad_note,
+    mismatch_warn_note,
+    question_retrieval_terms,
+    type_focus_directive,
+)
 from app.core.config import load_config
 from app.core.factory import build_components
 from app.core.folder_registry import FolderRegistry
+from app.core.norm_check import (
+    find_unsupported_measurements,
+    find_unsupported_norm_references,
+    norm_warning_footnote,
+)
 from app.core.types import Answer
 from app.core.utils import stable_json_dumps
 from app.pipeline.indexer import KnowledgeBaseIndexer
@@ -58,6 +75,11 @@ class FolderRequest(BaseModel):
 
 class MoveRequest(BaseModel):
     folder: str = ""  # Zielordner ("" = aus Ordner entfernen / kein Ordner)
+
+
+class BulkDeleteRequest(BaseModel):
+    doc_hashes: list[str] = Field(default_factory=list)  # gezielt ausgewählte Dokumente
+    folders: list[str] = Field(default_factory=list)     # ausgewählte Ordner (inkl. ihrer Dokumente)
 
 
 class TitleRequest(BaseModel):
@@ -327,6 +349,59 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    @app.delete("/documents")
+    async def delete_all_documents():
+        """
+        Leert die gesamte Wissensbasis: alle Dokumente/Chunks UND alle (auch leeren)
+        Ordner werden entfernt ("Alle löschen" im Frontend). Danach ist die Wissensbasis
+        genauso leer wie bei einem frisch installierten Copiloten. Die persistente
+        Qdrant-Collection bzw. folders.json bleibt nur so lange geleert, bis wieder
+        etwas hochgeladen wird – ein Neustart stellt keine gelöschten Daten wieder her.
+        """
+        try:
+            docs = await asyncio.to_thread(indexer.list_documents)
+            registered = await asyncio.to_thread(folder_registry.list)
+            await asyncio.to_thread(indexer.clear_all)
+            await asyncio.to_thread(folder_registry.clear)
+            return {
+                "status": "cleared",
+                "deleted_documents": len(docs),
+                "deleted_folders": len(registered),
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/documents/delete-bulk")
+    async def delete_documents_bulk(req: BulkDeleteRequest):
+        """
+        Löscht mehrere ausgewählte Dokumente und/oder ganze Ordner auf einmal
+        (Mehrfachauswahl im Frontend). Ausgewählte Ordner werden inklusive der darin
+        enthaltenen Dokumente entfernt – anders als DELETE /folders/{name}, das die
+        Dokumente nur nach "Ohne Ordner" verschiebt. Der Server ermittelt die
+        Dokumente eines Ordners selbst, damit die Auswahl auch bei veralteter
+        Frontend-Liste konsistent gelöscht wird.
+        """
+        doc_hashes = [h.strip() for h in (req.doc_hashes or []) if h and h.strip()]
+        folders = [f.strip() for f in (req.folders or []) if f and f.strip()]
+        try:
+            all_docs = await asyncio.to_thread(indexer.list_documents)
+            folder_set = set(folders)
+            to_delete = set(doc_hashes)
+            to_delete.update(d.doc_hash for d in all_docs if d.folder in folder_set)
+
+            for doc_hash in to_delete:
+                await asyncio.to_thread(indexer.delete_document, doc_hash)
+            for name in folders:
+                await asyncio.to_thread(folder_registry.remove, name)
+
+            return {
+                "status": "deleted",
+                "deleted_documents": len(to_delete),
+                "deleted_folders": len(folders),
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     @app.delete("/documents/{doc_hash}")
     async def delete_document(doc_hash: str):
         """Löscht alle Chunks eines Dokuments aus Qdrant anhand des doc_hash."""
@@ -458,9 +533,24 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         result.setdefault("filename", original_filename or step_path.name)
 
         try:
-            from app.implementations.cad_mesh_exporter import export_step_to_stl
-
-            export_step_to_stl(step_path, preview_path)
+            # 3D-Vorschau: STL-Tessellierung braucht pythonocc/OCC. Lokal (Conda-Betrieb,
+            # cad_processor_local) ist OCC im Prozess; im Docker-Betrieb hat der
+            # app-Container KEIN OCC → Fallback auf den /export-stl-Endpoint des
+            # cad_processor-Containers (dort lebt OCC). Scheitert auch das, bleibt die
+            # Analyse gültig und das Frontend zeigt die parametrische SVG-Zeichnung.
+            try:
+                from app.implementations.cad_mesh_exporter import export_step_to_stl
+                export_step_to_stl(step_path, preview_path)
+            except (RuntimeError, ImportError, ModuleNotFoundError):
+                cad_url = config.cad_adapter.url.rstrip("/")
+                with httpx.Client(timeout=120) as client, step_path.open("rb") as fh:
+                    r = client.post(
+                        f"{cad_url}/export-stl",
+                        files={"file": (original_filename or step_path.name, fh, "application/step")},
+                    )
+                    r.raise_for_status()
+                    preview_path.parent.mkdir(parents=True, exist_ok=True)
+                    preview_path.write_bytes(r.content)
             result["preview"] = {
                 "format": "stl",
                 "mesh_url": f"/cad/preview/{preview_path.name}",
@@ -498,6 +588,17 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
 
         try:
             return await asyncio.to_thread(_analyze_cad_with_preview, dest, preview_path, file.filename or tmp_name)
+        except httpx.HTTPStatusError as e:
+            # Fehler des cad_processor (z.B. 422 "keine gültige STEP-Datei") mit seiner
+            # verständlichen Original-Meldung an die GUI durchreichen – statt des
+            # kryptischen httpx-Textes ("Server error '500 …' … MDN-Link").
+            logger.exception("cad_analysis_failed file=%s", dest)
+            try:
+                upstream_detail = e.response.json().get("detail") or e.response.text
+            except Exception:  # noqa: BLE001 - Upstream-Body ist kein JSON
+                upstream_detail = e.response.text
+            status = e.response.status_code if 400 <= e.response.status_code < 500 else 502
+            raise HTTPException(status_code=status, detail=f"CAD-Analyse fehlgeschlagen: {upstream_detail}")
         except Exception as e:
             logger.exception("cad_analysis_failed file=%s", dest)
             raise HTTPException(status_code=502, detail=f"CAD analysis failed: {e}")
@@ -552,16 +653,59 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
 
     async def _answer_one(question: str, cad_json: dict[str, Any], answer_format: Optional[str], request_id: Optional[str]) -> Answer:
         """
-        Pipeline für eine einzelne Frage: Retrieval (Originalfrage) → Antwortgenerierung.
-        Das CAD-JSON fließt erst in der Antwortstufe ein – das Retrieval arbeitet
-        ausschließlich mit der Nutzerfrage.
+        Pipeline für eine einzelne Frage: Retrieval → Antwortgenerierung.
+        CAD-bewusstes Retrieval: Bei geladenem Bauteil wird die SUCHE um deutsche
+        Zahnradtyp-Begriffe angereichert (cad_retrieval_terms), damit bauteil-
+        spezifische Literatur gefunden wird. Die Antwortstufe erhält weiterhin die
+        Originalfrage + das vollständige CAD-JSON.
         """
         progress = _progress_for(request_id)
+
+        # --- Typ-Abgleich Frage ↔ CAD (deterministisch, konfidenz-gestuft; Config: part_match) ---
+        pm = config.part_match
+        mismatch = assess_type_mismatch(
+            question, cad_json,
+            low_confidence=pm.low_confidence, high_confidence=pm.high_confidence,
+        )
+
+        # Kurzschluss "ask_back": hohe Diskrepanz-Konfidenz + Rückfrage-Modus →
+        # KEINE Sachantwort, kein Retrieval, kein LLM-Call. Die Rückfrage bittet um
+        # eine präzisierte Neu-Eingabe (Anfragen sind zustandslos).
+        if mismatch and mismatch.severity == "hard" and pm.mode == "ask_back":
+            return {
+                "question": question,
+                "answer_text": mismatch_ask_back_answer(mismatch),
+                "sources": [],
+                "agent_trace": [{
+                    "agent": "orchestrator",
+                    "title": "Bauteil-Abgleich",
+                    "content": (
+                        f"Frage und Bauteil widersprechen sich (CAD: {mismatch.cad_label}, "
+                        f"Konfidenz ≥ {pm.high_confidence:.0%}) – Rückfrage statt Sachantwort "
+                        f"(part_match.mode=ask_back)."
+                    ),
+                    "status": "warnung",
+                }],
+            }
+
+        # Modus "follow_cad" bei hoher Konfidenz: Die Sachantwort wird für den
+        # TATSÄCHLICH geladenen CAD-Typ erstellt – Suche und Prompt folgen dem Bauteil.
+        follow_cad = bool(mismatch and mismatch.severity == "hard" and pm.mode == "follow_cad")
+
+        # Anreicherung der Suche: Bei follow_cad zählt der CAD-Typ. Sonst hat ein in
+        # der Frage GENANNTER Typ Vorrang (explizite Nutzerabsicht); ohne Typ-Nennung
+        # liefert das geladene Bauteil die Begriffe.
+        if follow_cad:
+            cad_terms = cad_retrieval_terms(cad_json)
+        else:
+            cad_terms = question_retrieval_terms(question) or cad_retrieval_terms(cad_json)
         def _retrieve_with_optional_progress() -> list[Any]:
+            kwargs = {"progress_callback": progress, "context_terms": cad_terms or None}
             try:
-                return components.retriever.retrieve(question, progress_callback=progress)
+                return components.retriever.retrieve(question, **kwargs)
             except TypeError as e:
-                if "progress_callback" not in str(e):
+                # Ältere Retriever-Implementierungen ohne diese optionalen Parameter.
+                if not any(k in str(e) for k in kwargs):
                     raise
                 return components.retriever.retrieve(question)
 
@@ -575,17 +719,23 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
             )
             raise
 
+        # Bei follow_cad: Direktive in den AUSGABEFORMAT-Slot, die den Fließtext
+        # terminologisch auf den CAD-Typ zwingt (sonst widerspräche der Text dem Hinweis).
+        directive = type_focus_directive(mismatch) if follow_cad else None
+
         def _generate_with_optional_progress() -> Answer:
+            optional_kwargs = {"progress_callback": progress, "context_directive": directive}
             try:
                 return components.answer_generator.generate(
                     question=question,
                     chunks=chunks,
                     cad_metadata=cad_json,
                     answer_format=answer_format,
-                    progress_callback=progress,
+                    **optional_kwargs,
                 )
             except TypeError as e:
-                if "progress_callback" not in str(e):
+                # Ältere Generator-Implementierungen ohne diese optionalen Parameter.
+                if not any(k in str(e) for k in optional_kwargs):
                     raise
                 return components.answer_generator.generate(
                     question=question,
@@ -644,6 +794,64 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
 
         process_steps = [{k: v for k, v in step.items() if k != "key"} for step in snapshot]
         merged = process_steps + ([orchestrator_step] if orchestrator_step else [])
+
+        answer = dict(answer)
+        sources = answer.get("sources") or []
+        answer_text = str(answer.get("answer_text", ""))
+
+        # --- Guardrail 1: Fakten-Verifikation (deterministisch, kein LLM) ---
+        # Jede Normbezeichnung UND jede Kennzahl (Zahl+Einheit) der Antwort muss in
+        # den abgerufenen Chunk-Texten, Dokumenttiteln, den CAD-Bauteildaten oder der
+        # Frage selbst belegt sein; unbelegte Angaben werden per Fußnote markiert.
+        reference_texts = (
+            [str(s.get("text", "")) for s in sources]
+            + [str(s.get("title", "")) for s in sources]
+            + [stable_json_dumps(cad_json) if cad_json else "", question]
+        )
+        unsupported = find_unsupported_norm_references(answer_text, reference_texts)
+        unsupported += find_unsupported_measurements(answer_text, reference_texts)
+        if unsupported:
+            answer_text = f"{answer_text}\n\n{norm_warning_footnote(unsupported)}"
+            answer["answer_text"] = answer_text
+            merged.append({
+                "agent": "orchestrator",
+                "title": "Fakten-Verifikation",
+                "content": "Nicht in den abgerufenen Quellen/Bauteildaten belegt: "
+                           + "; ".join(unsupported)
+                           + ". Die Angaben wurden in der Antwort markiert.",
+                "status": "warnung",
+            })
+
+        # --- Guardrail 2: Zitier-Transparenz (abgerufen vs. tatsächlich zitiert) ---
+        cited_qids = [f"Q{n}" for n in sorted({int(x) for x in re.findall(r"\[Q(\d+)\]", answer_text)})]
+        title_by_qid = {str(s.get("qid")): str(s.get("title", "")) for s in sources}
+        stats = {
+            "chunks_retrieved": len(sources),
+            "unique_docs_retrieved": len({str(s.get("title", "")) for s in sources}),
+            "cited_qids": cited_qids,
+            "unique_docs_cited": len({title_by_qid[q] for q in cited_qids if q in title_by_qid}),
+        }
+        answer["citation_stats"] = stats  # landet in API-Response UND Query-Log (logs/queries/)
+        logger.info(
+            "citation_stats retrieved_chunks=%d retrieved_docs=%d cited=%s cited_docs=%d question=%.60r",
+            stats["chunks_retrieved"], stats["unique_docs_retrieved"],
+            ",".join(cited_qids) or "-", stats["unique_docs_cited"], question,
+        )
+
+        # Typ-Abgleich sichtbar machen (unabhängig davon, ob das LLM den Widerspruch
+        # bemerkt hat): follow_cad → "Antwort folgt dem CAD-Typ"-Hinweis, sonst (soft)
+        # die klassische Warnung "Antwort behandelt die Frage wie gestellt".
+        if mismatch:
+            note = mismatch_followed_cad_note(mismatch) if follow_cad else mismatch_warn_note(mismatch)
+            answer = dict(answer)
+            answer["answer_text"] = f"{note}\n\n{answer.get('answer_text', '')}"
+            merged.append({
+                "agent": "orchestrator",
+                "title": "Bauteil-Abgleich",
+                "content": note.replace("⚠️ **Bauteil-Abgleich:** ", "").replace("**", ""),
+                "status": "warnung",
+            })
+
         if merged:
             answer = dict(answer)
             answer["agent_trace"] = merged

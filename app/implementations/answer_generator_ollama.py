@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 from typing import Any, Callable, Optional
 
+from app.core.cad_terms import GEAR_TYPE_LABELS
 from app.core.types import Answer, AnswerSource, RetrievedChunk
 from app.core.utils import stable_json_dumps
 from app.implementations.ollama_client import OllamaClient
@@ -23,10 +24,9 @@ ProgressCallback = Callable[[str], None]
 # Deutsche Bezeichner + Einheiten für die GearParameters-Felder (Format: cad_processor/src/output_schema.py).
 # Das LLM (insb. kleine Modelle) kann deutsche Fragebegriffe sonst nicht auf die englischen,
 # verschachtelten JSON-Schlüssel abbilden – daher wird das CAD-JSON in einen lesbaren Block übersetzt.
-_GEAR_TYPE_LABELS = {
-    "spur": "Stirnrad (Geradverzahnung)", "helical": "Schrägverzahnung", "bevel": "Kegelrad",
-    "internal": "Innenverzahnung", "worm": "Schnecke", "rack": "Zahnstange",
-}
+# Deutsche Anzeige-Labels je gear_type – zentral in app/core/cad_terms.py definiert
+# (dort auch vom Typ-Abgleich Frage↔CAD genutzt).
+_GEAR_TYPE_LABELS = GEAR_TYPE_LABELS
 # (Sektion, Schlüssel) -> (deutsches Label, Einheit)
 _CAD_FIELD_LABELS: dict[tuple[str, str], tuple[str, str]] = {
     ("tooth_profile", "num_teeth"): ("Zähnezahl", ""),
@@ -195,12 +195,62 @@ _CAD_IDENTITY_PATTERNS = (
 )
 
 
-def resolve_format_instruction(answer_format: Optional[str]) -> str:
-    """Übersetzt die Format-Auswahl (kurz/standard/…) in die konkrete LLM-Anweisung; Fallback: standard."""
-    return FORMAT_INSTRUCTIONS.get(
+# Empfehlungs-Fragen ("welches Verfahren eignet sich am besten?") verlangen eine klare
+# Festlegung statt einer Aufzählung von Möglichkeiten. Kleine LLMs befolgen Regeln aus der
+# Mitte des Prompts unzuverlässig – deshalb wird diese Direktive zusätzlich deterministisch
+# in den AUSGABEFORMAT-Slot injiziert (letzter Abschnitt vor "ANTWORT:" = höchste Befolgung).
+_RECOMMENDATION_RE = re.compile(
+    r"\b("
+    r"eignet|geeignet\w*|eignung|empfehl\w*|empfiehl\w*|am besten|besser geeignet|"
+    r"welches verfahren|welche methode|welcher prozess|was sollte|sollte? (ich|man|wir)|"
+    r"auswähl\w*|auswahl|bevorzug\w*|optimal\w*|sinnvollst\w*"
+    r")\b",
+    re.IGNORECASE,
+)
+
+RECOMMENDATION_DIRECTIVE = (
+    "WICHTIG – die Frage verlangt eine Empfehlung: Der ALLERERSTE Satz der Antwort beginnt "
+    "wörtlich mit \"Empfehlung:\" und nennt die klare Wahl. Danach folgt die Begründung mit den "
+    "konkreten Zahlenwerten des geladenen Bauteils aus den BAUTEILDATEN, danach knapp die "
+    "nachrangigen Alternativen mit dem Grund ihrer Nachrangigkeit. Hänge an jede Aussage aus "
+    "einem Wissensauszug dessen Quellenmarkierung an – Beispiel: \"Für einsatzgehärtete "
+    "Kegelräder wird Schleifen empfohlen [Q1].\" Verboten: Füllfloskeln wie \"es ist wichtig "
+    "zu beachten\" oder \"es ist ratsam\" sowie eine eigene Quellenliste am Ende "
+    "(die Quellen zeigt die Oberfläche separat an)."
+)
+
+
+def is_recommendation_query(question: str) -> bool:
+    """True, wenn die Frage eine Auswahl/Eignung/Empfehlung verlangt (statt reiner Fakten)."""
+    return bool(_RECOMMENDATION_RE.search(question or ""))
+
+
+def resolve_format_instruction(answer_format: Optional[str], question: Optional[str] = None) -> str:
+    """
+    Übersetzt die Format-Auswahl (kurz/standard/…) in die konkrete LLM-Anweisung; Fallback: standard.
+    Wird eine question übergeben und ist sie eine Empfehlungsfrage, wird die
+    RECOMMENDATION_DIRECTIVE angehängt – sie landet damit im AUSGABEFORMAT-Slot des Prompts.
+    """
+    instruction = FORMAT_INSTRUCTIONS.get(
         (answer_format or DEFAULT_FORMAT).strip().casefold(),
         FORMAT_INSTRUCTIONS[DEFAULT_FORMAT],
     )
+    if question and is_recommendation_query(question):
+        instruction = f"{instruction}\n{RECOMMENDATION_DIRECTIVE}"
+    return instruction
+
+
+# Kleine LLMs hängen trotz Verbots gern eine eigene "Quellen:"-Liste an die Antwort –
+# redundant, da die Oberfläche die Quellen strukturiert anzeigt. Deterministisch entfernen.
+_TRAILING_SOURCES_RE = re.compile(
+    r"\n+\s*(Quellen|Quellenliste|Quellenangaben)\s*:?\s*\n(\s*([*\-•]|\[?Q?\d).*\n?)*\s*$",
+    re.IGNORECASE,
+)
+
+
+def strip_self_source_list(answer_text: str) -> str:
+    """Entfernt eine vom LLM selbst angehängte Quellenliste am Antwortende (Backstop)."""
+    return _TRAILING_SOURCES_RE.sub("", answer_text or "").rstrip()
 
 
 def maybe_answer_cad_identity_question(question: str, cad: dict[str, Any]) -> Optional[str]:
@@ -311,10 +361,11 @@ class OllamaAnswerGenerator:
         domain_name: str,
         max_tokens: int,
         temperature: float,
+        think: Optional[bool] = None,
     ) -> None:
         """prompt_path zeigt auf answer_system_prompt.txt mit Variablen {DOMAIN}, {CAD_METADATA_JSON}, {CHUNKS_BLOCK}, {QUESTION}."""
         self.model_name = model_name
-        self.client = OllamaClient(base_url=base_url, timeout_s=timeout_s)
+        self.client = OllamaClient(base_url=base_url, timeout_s=timeout_s, think=think)
         self.prompt_template = prompt_path.read_text(encoding="utf-8")  # einmalig beim Start laden
         self.domain_name = domain_name
         self.max_tokens = max_tokens
@@ -328,10 +379,13 @@ class OllamaAnswerGenerator:
         cad_metadata: dict,
         answer_format: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
+        context_directive: Optional[str] = None,
     ) -> Answer:
         """
         Wandelt Chunks in einen [Q1]/[Q2]-Block um, fügt CAD-Kontext hinzu und ruft das LLM auf.
         answer_format steuert den AUSGABEFORMAT-Abschnitt des Prompts (kurz/standard/ausführlich/…).
+        context_directive (optional) wird zusätzlich in den AUSGABEFORMAT-Slot injiziert
+        (z.B. Bauteil-Fokus bei Typ-Diskrepanz).
         Gibt ein Answer-Dict zurück mit Antworttext und source-Liste für das Frontend.
         question ist die Originalfrage des Nutzers (es gibt kein Query-Rewriting).
         """
@@ -352,7 +406,9 @@ class OllamaAnswerGenerator:
                 progress_callback("improvement_skipped")
             return {"question": question, "answer_text": fast_answer, "sources": sources}
 
-        format_instruction = resolve_format_instruction(answer_format)
+        format_instruction = resolve_format_instruction(answer_format, question)
+        if context_directive:
+            format_instruction = f"{format_instruction}\n{context_directive}"
 
         # CAD-Daten als deutsch beschrifteter Klartext plus vollständiges Roh-JSON,
         # damit CAD-only-Fragen auch ohne Retriever-Treffer beantwortbar bleiben.
@@ -381,4 +437,4 @@ class OllamaAnswerGenerator:
                 progress_callback("validation_skipped")
                 progress_callback("improvement_skipped")
 
-        return {"question": question, "answer_text": answer_text, "sources": sources}
+        return {"question": question, "answer_text": strip_self_source_list(answer_text), "sources": sources}

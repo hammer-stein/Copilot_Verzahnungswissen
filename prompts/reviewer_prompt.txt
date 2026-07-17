@@ -6,8 +6,11 @@ Prüfe insbesondere:
 - Deckung: Wird jede Aussage durch die Bauteildaten ([CAD]) oder einen Wissensauszug ([Q..]) gestützt? Unbelegte oder erfundene Aussagen sind ein Fehler.
 - CAD-Vorrang: Bei Fragen zum aktuell geladenen Bauteil selbst muss der Entwurf den Zahnradtyp und die Parameter aus den BAUTEILDATEN verwenden. Ein allgemeiner Wissensauszug darf den CAD-Zahnradtyp nicht ersetzen.
 - Zahnradtyp: Wenn `gear_type` bzw. "Verzahnungstyp" in den BAUTEILDATEN vorhanden ist und die Frage nach dem Bauteiltyp fragt, muss die Antwort diesen Typ explizit mit [CAD] nennen.
-- Quellentreue: Verweisen die [Q..]-Markierungen auf den inhaltlich passenden Auszug? Stimmen die Nummern?
+- Quellentreue: Verweisen die [Q..]-Markierungen auf den inhaltlich passenden Auszug? Stimmen die Nummern und die Form ([Q1], [Q2] – nicht "[8]" oder "Quelle: 8")?
 - Plausibilität: Sind technische Werte, Einheiten und Schlussfolgerungen für die Domäne sinnvoll und widerspruchsfrei?
+- Empfehlung: Verlangt die FRAGE eine Auswahl/Eignung/Empfehlung, muss der Entwurf mit einem klaren Satz "Empfehlung: …" beginnen und diese begründen. Eine bloße Aufzählung von Möglichkeiten ohne Festlegung ist ein Mangel – korrigiere sie zu einer begründeten Empfehlung aus den vorhandenen Auszügen.
+- Bauteilbezug: Empfohlene Verfahren/Werte müssen zum Zahnradtyp und den Kennwerten aus den BAUTEILDATEN passen (z. B. keine Mikrozahnrad- oder Stirnrad-Verfahren für ein Kegelrad empfehlen). Passt kein Auszug vollständig zum Bauteil, muss der Entwurf diese Lücke explizit benennen.
+- Zahlen-Treue: Vergleiche JEDEN Zahlenwert, den der Entwurf dem Bauteil bzw. den BAUTEILDATEN zuschreibt, Ziffer für Ziffer mit den BAUTEILDATEN. Steht der Wert dort nicht (z. B. ein Beispielwert aus einem Wissensauszug, der dem Bauteil untergeschoben wurde), ist das ein Fehler → streiche oder korrigiere die Aussage.
 - Format: Hält die Antwort das geforderte AUSGABEFORMAT ein?
 
 Wähle genau ein URTEIL:

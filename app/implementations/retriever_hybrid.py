@@ -74,6 +74,20 @@ def _is_table_hit(hit: SearchResult) -> bool:
     return hit.metadata.get("doc_kind") == "table"
 
 
+# Literaturverzeichnis-Seiten aus Lehrbüchern (z.B. "[PETE04] PETER, A.: …") ranken
+# lexikalisch hoch, enthalten aber kein nutzbares Fachwissen – nur Fundstellen. Als
+# LLM-Kontext sind sie giftig: Kleine Modelle spinnen aus Titeln im Verzeichnis
+# scheinbare Empfehlungen (real passiert: "Innenhochdruck-Umformen" aus dem
+# Klocke-Literaturverzeichnis wurde zur Fertigungsempfehlung "HPU" für Kegelräder).
+# Heuristik: ≥3 Zitationsschlüssel im Klocke-/Springer-Stil ([ABCD04], [Pisc95a]).
+_BIB_KEY_RE = re.compile(r"\[[A-ZÄÖÜ][A-Za-zÄÖÜäöü]{1,6}\d{2}[a-z]?\]")
+
+
+def _is_bibliography_chunk(text: str) -> bool:
+    """True für Chunks, die (überwiegend) Literaturverzeichnis sind – kein Wissenskontext."""
+    return len(_BIB_KEY_RE.findall(text or "")) >= 3
+
+
 class HybridRetriever:
     """Semantische Vektorsuche mit optionalem Hybrid-Scoring. Zustandslos bis auf injizierte Komponenten."""
 
@@ -112,10 +126,27 @@ class HybridRetriever:
         self.aggregate_max_chunks = max(1, aggregate_max_chunks)
         self.auto_table_context_rows = max(0, auto_table_context_rows)
 
-    def retrieve(self, question: str, progress_callback: Optional[ProgressCallback] = None) -> list[RetrievedChunk]:
-        """Bettet die Suchanfrage ein und gibt die top_k ähnlichsten Chunks zurück."""
+    def retrieve(
+        self,
+        question: str,
+        progress_callback: Optional[ProgressCallback] = None,
+        context_terms: Optional[str] = None,
+    ) -> list[RetrievedChunk]:
+        """
+        Bettet die Suchanfrage ein und gibt die top_k ähnlichsten Chunks zurück.
+
+        context_terms (optional): Bauteilkontext-Begriffe (z. B. „Kegelrad
+        Kegelradverzahnung" aus app/core/cad_terms.py bei geladenem CAD-Bauteil).
+        Sie werden NUR der Einbettungs-/Sparse-Query angehängt, damit bauteil-
+        spezifische Literatur vor thematisch ähnlichen, aber bauteilfremden
+        Treffern rankt. Listen-/Aggregatfragen bleiben unangereichert – dort
+        soll das Tabellen-Routing allein von der Originalfrage gesteuert werden.
+        """
+        enriched = bool(context_terms) and not is_aggregate_query(question)
+        query_text = f"{question}\n{context_terms}" if enriched else question
+
         _notify(progress_callback, "embedding_start")
-        embedding = self.embedder.embed([question])
+        embedding = self.embedder.embed([query_text])
         _notify(progress_callback, "embedding_done")
         qvec = embedding.dense_vectors[0]
         qsparse = embedding.sparse_vectors[0] if embedding.sparse_vectors else None
@@ -125,7 +156,8 @@ class HybridRetriever:
         _notify(progress_callback, "search_start")
         # Grober Vorfilter in Qdrant mit dem NIEDRIGEREN der beiden Thresholds –
         # sonst würden Tabellenzeilen serverseitig verworfen, bevor der
-        # Kind-spezifische Filter unten greifen kann.
+        # Kind-spezifische Filter unten greifen kann. Qdrant filtert hier auf den
+        # DENSE-Kosinus-Score (der Vektorindex kennt nur den dichten Vektor).
         hits = self.store.search(
             qvec,
             top_k=candidate_k,
@@ -135,12 +167,28 @@ class HybridRetriever:
             hybrid_dense_weight=self.hybrid_dense_weight,
             hybrid_sparse_weight=self.hybrid_sparse_weight,
         )
-        # Kind-spezifischer Threshold auf den finalen (ggf. Hybrid-)Score:
-        # Tabellenzeilen gegen table_min_similarity, Text gegen min_similarity.
+        # Kind-spezifischer Relevanz-Threshold. WICHTIG: gegatet wird auf die
+        # DICHTE Kosinus-Ähnlichkeit (dense_score, interpretierbar in [0,1]) –
+        # NICHT auf den fusionierten Hybrid-Score. Der Hybrid-Score ist
+        # 0.7·dense + 0.3·sparse; er wird bewusst nur zum RANKING (Sortierung)
+        # verwendet. Würde man direkt gegen ihn schwellen, drückt allein das
+        # Dense-Gewicht 0.7 selbst einen perfekten Treffer (1.0) auf 0.7, und
+        # da BGE-M3-Sparse-Scores für kurze Fragen klein sind (~0.1–0.3), läge
+        # die effektive Dense-Hürde bei ~0.71 – praktisch nichts käme durch
+        # ("immer keine Chunks gefunden"). Der Hybrid-Score darf einen Treffer
+        # zusätzlich RETTEN (max(...)), wenn ein starker lexikalischer Sparse-
+        # Match (z.B. Normnummer „DIN 3990") den fusionierten Score über die
+        # Schwelle hebt, obwohl der Dense-Score knapp darunter liegt.
         hits = [
             h for h in hits
-            if h.score >= (self.table_min_similarity if _is_table_hit(h) else self.min_similarity)
+            if max(h.dense_score if h.dense_score is not None else h.score, h.score)
+            >= (self.table_min_similarity if _is_table_hit(h) else self.min_similarity)
         ]
+
+        # Literaturverzeichnis-Chunks aussortieren (kein Wissenskontext, s. Heuristik oben).
+        bib_dropped = sum(1 for h in hits if _is_bibliography_chunk(h.chunk.text))
+        if bib_dropped:
+            hits = [h for h in hits if not _is_bibliography_chunk(h.chunk.text)]
 
         routed = self._route_table_context(question, hits)
         if routed is not None:
@@ -154,7 +202,12 @@ class HybridRetriever:
 
         # Detailtext für den Prozess-Schritt "Chunk-Suche": welche Dateien,
         # welche Seiten/Zeilen, welche Route – macht das Retrieval im GUI prüfbar.
-        _notify(progress_callback, "search_done", self._search_detail(chunks, route))
+        detail = self._search_detail(chunks, route)
+        if bib_dropped:
+            detail += f" · {bib_dropped} Literaturverzeichnis-Auszug/-Auszüge verworfen."
+        if enriched:
+            detail += f" · Suche um Bauteilkontext erweitert ({context_terms})."
+        _notify(progress_callback, "search_done", detail)
         return chunks
 
     # ------------------------------------------------------------------

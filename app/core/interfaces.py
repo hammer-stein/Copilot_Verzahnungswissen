@@ -70,6 +70,8 @@ class VectorStore(Protocol):
 
     def delete_by_doc_hash(self, doc_hash: str) -> None: ...
 
+    def clear_all(self) -> None: ...
+
     def set_document_folder(self, doc_hash: str, folder: str) -> None: ...
 
     def set_document_title(self, doc_hash: str, title: str) -> None: ...
@@ -84,12 +86,25 @@ ProgressCallback = Callable[..., None]
 
 
 class Retriever(Protocol):
-    """Findet relevante Chunks für die Nutzerfrage. Aktuelle Impl.: HybridRetriever."""
-    def retrieve(self, question: str, progress_callback: Optional[ProgressCallback] = None) -> list[RetrievedChunk]: ...
+    """
+    Findet relevante Chunks für die Nutzerfrage. Aktuelle Impl.: HybridRetriever.
+    context_terms: optionale Bauteilkontext-Begriffe (app/core/cad_terms.py), die
+    nur die Suche anreichern – die Antwortstufe erhält weiterhin die Originalfrage.
+    """
+    def retrieve(
+        self,
+        question: str,
+        progress_callback: Optional[ProgressCallback] = None,
+        context_terms: Optional[str] = None,
+    ) -> list[RetrievedChunk]: ...
 
 
 class AnswerGenerator(Protocol):
-    """Generiert eine Antwort aus Frage + Chunks + CAD-Kontext via LLM. Aktuelle Impl.: OllamaAnswerGenerator."""
+    """
+    Generiert eine Antwort aus Frage + Chunks + CAD-Kontext via LLM. Aktuelle Impl.: OllamaAnswerGenerator.
+    context_directive: optionale Zusatz-Anweisung für den AUSGABEFORMAT-Slot des Prompts
+    (z.B. Bauteil-Fokus bei Typ-Diskrepanz, siehe app/core/cad_terms.type_focus_directive).
+    """
     def generate(
         self,
         *,
@@ -98,4 +113,5 @@ class AnswerGenerator(Protocol):
         cad_metadata: dict,
         answer_format: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
+        context_directive: Optional[str] = None,
     ) -> Answer: ...

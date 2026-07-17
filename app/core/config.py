@@ -112,6 +112,9 @@ class AnswerGeneratorConfig(BaseModel):
     timeout_s: int = 120
     max_tokens: int = 800
     temperature: float = 0.2  # niedrig = faktenorientiert, deterministisch
+    # Reasoning-Modus für Modelle wie qwen3 (None = Ollama-Default, false = aus).
+    # Für den RAG-Betrieb aus lassen: Denkspuren vervielfachen die Latenz pro Frage.
+    think: Optional[bool] = None
 
     # --- nur für implementation == "multi_agent" relevant (Defaults halten bestehende config.yaml gültig) ---
     solver_prompt_path: str = "prompts/solver_prompt.txt"      # Prompt-Template des Lösungs-Agenten
@@ -128,6 +131,26 @@ class FrontendConfig(BaseModel):
     show_metadata_panel: bool = True
 
 
+class PartMatchConfig(BaseModel):
+    """
+    Typ-Abgleich Frage ↔ geladenes CAD-Bauteil (app/core/cad_terms.py).
+
+    Nennt die Frage einen anderen Zahnradtyp als die CAD-Analyse, entscheidet die
+    CAD-Konfidenz über die Reaktion:
+      confidence <  low_confidence   → keine Warnung (CAD-Typ zu unsicher, um der Frage zu widersprechen)
+      low ≤ confidence < high        → Warnung voranstellen, Antwort folgt der Frage (bisheriges Verhalten)
+      confidence ≥ high_confidence   → `mode` greift:
+          "follow_cad" = Sachantwort für den TATSÄCHLICH geladenen CAD-Typ generieren,
+                         mit klarem Hinweis auf die Abweichung vom Fragetyp.
+          "ask_back"   = keine Sachantwort; stattdessen Rückfrage, für welchen Typ
+                         geantwortet werden soll (Anfragen sind zustandslos – die
+                         Frage muss danach präzisiert neu gestellt werden).
+    """
+    mode: Literal["follow_cad", "ask_back"] = "follow_cad"
+    high_confidence: float = Field(default=0.85, ge=0.0, le=1.0)
+    low_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
 class AppConfig(BaseModel):
     """Wurzel-Konfigurationsmodell – bildet die gesamte config.yaml ab."""
     domain: DomainConfig
@@ -138,6 +161,7 @@ class AppConfig(BaseModel):
     retriever: RetrieverConfig
     answer_generator: AnswerGeneratorConfig
     frontend: FrontendConfig = Field(default_factory=FrontendConfig)
+    part_match: PartMatchConfig = Field(default_factory=PartMatchConfig)
 
 
 def load_config(path: Path) -> AppConfig:

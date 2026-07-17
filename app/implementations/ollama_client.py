@@ -8,18 +8,36 @@ Wird von OllamaAnswerGenerator genutzt.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Optional
 
 import httpx
+
+# Reasoning-Modelle (z.B. qwen3, deepseek-r1) können ihre Denkspur als <think>…</think>
+# in den Antworttext schreiben. Für den RAG-Fluss ist das Gift: Die Denkspur würde die
+# ANTWORT:/URTEIL:-Parser verwirren und die Antwort im GUI vermüllen. Wird defensiv
+# IMMER entfernt – bei Nicht-Reasoning-Modellen matcht das Muster schlicht nie.
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def strip_think_block(text: str) -> str:
+    """Entfernt <think>…</think>-Denkblöcke von Reasoning-Modellen aus dem Antworttext."""
+    return _THINK_BLOCK_RE.sub("", text or "").strip()
 
 
 class OllamaClient:
     """Synchroner HTTP-Client für Ollama. Wird via asyncio.to_thread() aus dem FastAPI-Event-Loop aufgerufen."""
 
-    def __init__(self, *, base_url: str, timeout_s: int) -> None:
-        """base_url ist z.B. "http://localhost:11434". timeout_s gilt für die gesamte Anfrage inkl. LLM-Generierung."""
+    def __init__(self, *, base_url: str, timeout_s: int, think: Optional[bool] = None) -> None:
+        """
+        base_url ist z.B. "http://localhost:11434". timeout_s gilt für die gesamte Anfrage inkl. LLM-Generierung.
+        think: Reasoning-Modus für Modelle wie qwen3 (None = Ollama-Default, False = aus).
+        Für den RAG-Betrieb gehört er AUS – 2–3 LLM-Calls pro Frage mit Denkspur würden die
+        Latenz vervielfachen, ohne dass kurze faktenbasierte Antworten davon profitieren.
+        """
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
+        self.think = think
 
     def generate(
         self,
@@ -48,11 +66,19 @@ class OllamaClient:
             payload["options"] = options
         if response_format:
             payload["format"] = response_format  # "json" → erzwingt gültiges JSON auf Dekodier-Ebene
+        if self.think is not None:
+            payload["think"] = self.think  # Reasoning-Modus (qwen3 & Co.) explizit steuern
 
         with httpx.Client(timeout=self.timeout_s) as client:
             r = client.post(f"{self.base_url}/api/generate", json=payload)
+            if r.status_code == 400 and "think" in payload and "think" in r.text.lower():
+                # Modell ohne Reasoning-Unterstützung (z.B. llama3.1) lehnt den think-Parameter
+                # ab → einmalig ohne ihn wiederholen, damit ein Modellwechsel in der config.yaml
+                # nicht an einer vergessenen think-Zeile scheitert.
+                del payload["think"]
+                r = client.post(f"{self.base_url}/api/generate", json=payload)
             r.raise_for_status()  # wirft Exception bei 4xx/5xx
-            return str(r.json().get("response", "")).strip()
+            return strip_think_block(str(r.json().get("response", "")))
 
     def generate_json(
         self,

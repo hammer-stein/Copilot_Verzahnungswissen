@@ -27,12 +27,14 @@ class _FakeRetriever:
 
 
 class _FakeAnswerGenerator:
-    def generate(self, *, question, chunks, cad_metadata, answer_format="standard"):
+    def generate(self, *, question, chunks, cad_metadata, answer_format="standard",
+                 progress_callback=None, context_directive=None):
         if question.startswith("FAIL"):
             # Simulierter LLM-Ausfall für den Fehlerpfad-Test (z.B. Ollama nicht erreichbar)
             raise RuntimeError("Ollama nicht erreichbar (Testfehler)")
         _LAST_CALL["answer_format"] = answer_format
         _LAST_CALL["cad_metadata"] = cad_metadata
+        _LAST_CALL["context_directive"] = context_directive
         return {
             "question": question,
             "answer_text": f"Antwort im Format '{answer_format}'. [Q1]",
@@ -59,6 +61,13 @@ class _FakeStore:
 
     def set_document_title(self, doc_hash, title):
         self.last_title = (doc_hash, title)
+
+    def delete_by_doc_hash(self, doc_hash):
+        self.deleted = getattr(self, "deleted", [])
+        self.deleted.append(doc_hash)
+
+    def clear_all(self):
+        self.cleared = True
 
 
 class _FakeComponents:
@@ -201,6 +210,43 @@ def test_ask_failure_marks_failing_step_with_error_message():
     assert "Ollama nicht erreichbar" in failed[0]["content"]
 
 
+def test_delete_all_documents_clears_knowledge_base():
+    """DELETE /documents leert die gesamte Wissensbasis (Dokumente + Ordner)."""
+    from pathlib import Path
+
+    # "Alle löschen" leert folders.json – vorher sichern, danach zurückschreiben,
+    # damit der Test die echte Ordner-Registry nicht dauerhaft verändert.
+    folders_json = Path(__file__).resolve().parents[1] / "storage" / "folders.json"
+    backup = folders_json.read_text(encoding="utf-8") if folders_json.exists() else None
+    try:
+        r = client.delete("/documents")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "cleared"
+        assert body["deleted_documents"] == 1  # _FakeStore liefert genau ein Dokument
+        assert "deleted_folders" in body
+    finally:
+        if backup is not None:
+            folders_json.write_text(backup, encoding="utf-8")
+
+
+def test_delete_documents_bulk_deletes_selected():
+    """POST /documents/delete-bulk löscht die ausgewählten Dokumente gebündelt."""
+    r = client.post("/documents/delete-bulk", json={"doc_hashes": ["abc123"], "folders": []})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "deleted"
+    assert body["deleted_documents"] == 1
+    assert body["deleted_folders"] == 0
+
+
+def test_delete_documents_bulk_accepts_empty_selection():
+    """Leere Auswahl ist gültig und löscht nichts (kein Fehler)."""
+    r = client.post("/documents/delete-bulk", json={"doc_hashes": [], "folders": []})
+    assert r.status_code == 200
+    assert r.json()["deleted_documents"] == 0
+
+
 def test_delete_cad_preview_removes_file_and_rejects_bad_names():
     """'Bauteil entfernen' im Frontend räumt das STL-Preview serverseitig auf."""
     from pathlib import Path
@@ -219,3 +265,74 @@ def test_delete_cad_preview_removes_file_and_rejects_bad_names():
     assert client.delete(f"/cad/preview/{victim.name}").json()["deleted"] is False
     assert client.delete("/cad/preview/..%2Fconfig.yaml").status_code == 404
     assert client.delete("/cad/preview/evil.txt").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Kronjuwel: Typ-Diskrepanz-Auflösung (follow_cad) über den echten /ask-Fluss
+# ---------------------------------------------------------------------------
+
+_RATCHET_CAD = {
+    "gear_type": {"value": "ratchet", "confidence": 0.92},
+    "tooth_profile": {"num_teeth": {"value": 24}, "module_mm": {"value": 1.0583, "unit": "mm"}},
+}
+_KEGELRAD_FRAGE = (
+    "ich möchte das hochgeladene kegelrad herstellen. Was sagt die literatur in der "
+    "wissensbasis dazu welches verfahren sich zur produktion hier am besten eignet"
+)
+
+
+def test_ask_follow_cad_injects_type_focus_directive_and_note():
+    """
+    KRONJUWEL-TEST des Kernbugs: Frage sagt "Kegelrad", CAD sagt "ratchet" mit
+    Konfidenz >= high_confidence und mode=follow_cad (Default). Dann MUSS
+      (a) der Generator eine Bauteil-Fokus-Direktive erhalten, die den CAD-Typ
+          erzwingt und den Fragetyp verbietet, und
+      (b) der Antwort der follow_cad-Hinweis vorangestellt sein.
+    Failt, wenn künftiges Prompt-/Config-Tuning die type_focus_directive aushebelt
+    (z.B. Direktive nicht mehr übergeben, Schwellen-Verdrahtung entfernt).
+    """
+    _LAST_CALL.clear()
+    r = client.post("/ask", json={
+        "questions": [_KEGELRAD_FRAGE],
+        "cad_metadata": _RATCHET_CAD,
+        "format": "standard",
+    })
+    assert r.status_code == 200
+    answer = r.json()["answers"][0]
+
+    # (a) Direktive kam beim Generator an und adressiert den CAD-Typ, nicht den Fragetyp.
+    directive = _LAST_CALL.get("context_directive")
+    assert directive, "type_focus_directive wurde NICHT an den Generator übergeben"
+    assert "Sperrrad" in directive          # CAD-Typ wird erzwungen …
+    assert "NICHT" in directive             # … der Fragetyp explizit verboten
+
+    # (b) Hinweis vorangestellt: Antwort wurde bewusst für den CAD-Typ erstellt.
+    text = answer["answer_text"]
+    assert text.startswith("⚠️")
+    assert "Sperrrad" in text and "92" in text
+    assert "TATSÄCHLICH geladene" in text
+
+
+def test_ask_soft_mismatch_keeps_question_type_without_directive():
+    """Konfidenz zwischen low und high: bisheriges Verhalten (Warnung, KEINE Direktive)."""
+    _LAST_CALL.clear()
+    soft_cad = {"gear_type": {"value": "ratchet", "confidence": 0.7}}
+    r = client.post("/ask", json={"questions": [_KEGELRAD_FRAGE], "cad_metadata": soft_cad})
+    assert r.status_code == 200
+    text = r.json()["answers"][0]["answer_text"]
+
+    assert _LAST_CALL.get("context_directive") is None   # keine Typ-Umlenkung
+    assert "behandelt die Frage, wie sie gestellt wurde" in text  # klassische Warnung
+
+
+def test_ask_low_confidence_mismatch_stays_silent():
+    """Konfidenz unter low_confidence: kein Abgleich-Hinweis (CAD-Typ zu unsicher)."""
+    _LAST_CALL.clear()
+    r = client.post("/ask", json={
+        "questions": [_KEGELRAD_FRAGE],
+        "cad_metadata": {"gear_type": {"value": "ratchet", "confidence": 0.3}},
+    })
+    assert r.status_code == 200
+    text = r.json()["answers"][0]["answer_text"]
+    assert "Bauteil-Abgleich" not in text
+    assert _LAST_CALL.get("context_directive") is None

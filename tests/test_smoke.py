@@ -173,3 +173,80 @@ def test_synthetic_cad_testdata_exists_and_is_consistent():
         import math
         m_t = tp["module_mm"] / math.cos(math.radians(tp["helix_angle_deg"] or 0.0))
         assert abs(geo["pitch_diameter_mm"] - m_t * tp["num_teeth"]) < 0.01
+
+
+# --- Empfehlungs-Direktive + Quellenlisten-Backstop ---------------------------
+
+def test_recommendation_query_detection():
+    from app.implementations.answer_generator_ollama import is_recommendation_query
+    assert is_recommendation_query("Welches Verfahren eignet sich am besten zur Produktion?")
+    assert is_recommendation_query("Was sollte ich für die Fertigung verwenden?")
+    assert is_recommendation_query("Welche Methode ist optimal?")
+    assert not is_recommendation_query("Wie groß ist der Teilkreisdurchmesser?")
+    assert not is_recommendation_query("Zeige mir alle Wellen.")
+
+
+def test_format_instruction_appends_recommendation_directive():
+    from app.implementations.answer_generator_ollama import resolve_format_instruction
+    base = resolve_format_instruction("standard")
+    with_reco = resolve_format_instruction("standard", "Welches Verfahren eignet sich am besten?")
+    assert with_reco.startswith(base)
+    assert "Empfehlung:" in with_reco
+    # Faktenfragen bleiben unverändert:
+    assert resolve_format_instruction("standard", "Wie groß ist der Modul?") == base
+
+
+def test_strip_self_source_list_removes_trailing_block():
+    from app.implementations.answer_generator_ollama import strip_self_source_list
+    text = "Empfehlung: Schleifen [Q1].\n\nBegründung folgt.\n\nQuellen:\n\n* VDI 3720 Blatt 9.1 (1990)\n* DIN 3965:2023-04\n"
+    assert strip_self_source_list(text) == "Empfehlung: Schleifen [Q1].\n\nBegründung folgt."
+    # Antworten ohne Quellenliste bleiben unverändert:
+    assert strip_self_source_list("Nur Text [Q1].") == "Nur Text [Q1]."
+    # "Quellen" mitten im Text wird NICHT entfernt:
+    keep = "Die Quellen:\nnennen dazu nichts. Details siehe [Q2]."
+    assert strip_self_source_list(keep) == keep
+
+
+def test_strip_think_block_removes_reasoning_trace():
+    from app.implementations.ollama_client import strip_think_block
+    raw = "<think>\nDer Nutzer fragt nach dem Modul…\n</think>\nEmpfehlung: Schleifen [Q1]."
+    assert strip_think_block(raw) == "Empfehlung: Schleifen [Q1]."
+    assert strip_think_block("Antwort ohne Denkspur.") == "Antwort ohne Denkspur."
+    assert strip_think_block("<think></think>Antwort.") == "Antwort."
+
+
+def test_context_directive_lands_in_llm_prompt_format_slot(tmp_path):
+    """
+    KRONJUWEL (Prompt-Ebene): Die type_focus_directive muss im tatsächlich ans LLM
+    gesendeten Prompt landen – im AUSGABEFORMAT-Slot ({FORMAT}), der zuverlässigsten
+    Stelle. Failt, wenn context_directive im Generator verloren geht.
+    """
+    from app.core.cad_terms import assess_type_mismatch, type_focus_directive
+
+    prompt_path = tmp_path / "prompt.txt"
+    prompt_path.write_text(
+        "{DOMAIN}\n{CAD_METADATA_JSON}\n{CHUNKS_BLOCK}\n{QUESTION}\nAUSGABEFORMAT:\n{FORMAT}",
+        encoding="utf-8",
+    )
+    generator = OllamaAnswerGenerator(
+        model_name="test", base_url="http://ollama.invalid", timeout_s=1,
+        prompt_path=prompt_path, domain_name="Verzahnung", max_tokens=128, temperature=0.0,
+    )
+    client = _PromptClient()
+    generator.client = client
+
+    mismatch = assess_type_mismatch(
+        "das kegelrad herstellen", {"gear_type": {"value": "ratchet", "confidence": 0.92}}
+    )
+    generator.generate(
+        question="das kegelrad herstellen",
+        chunks=[],
+        cad_metadata={"gear_type": {"value": "ratchet", "confidence": 0.92}},
+        answer_format="standard",
+        context_directive=type_focus_directive(mismatch),
+    )
+
+    # Direktive steht im Prompt, im FORMAT-Slot (nach "AUSGABEFORMAT:"), mit CAD-Typ.
+    assert "Bauteil-Fokus" in client.prompt
+    assert "Sperrrad" in client.prompt
+    assert client.prompt.index("Bauteil-Fokus") > client.prompt.index("AUSGABEFORMAT:")

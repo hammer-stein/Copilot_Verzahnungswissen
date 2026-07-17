@@ -27,6 +27,7 @@ from app.implementations.answer_generator_ollama import (
     cad_to_prompt_context,
     maybe_answer_cad_identity_question,
     resolve_format_instruction,
+    strip_self_source_list,
 )
 from app.implementations.table_qa import maybe_answer_table_filter_question
 from app.pipeline.agents.reviewer import ReviewerAgent, ReviewResult
@@ -73,16 +74,23 @@ class MultiAgentAnswerGenerator:
         cad_metadata: dict,
         answer_format: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
+        context_directive: Optional[str] = None,
     ) -> Answer:
         """
         Führt den Multi-Agenten-Fluss aus und gibt eine Answer mit nachvollziehbarem
         agent_trace (+ review) zurück. Bei jedem Fehler erfolgt ein Fallback auf den Single-Pass.
+        context_directive wird in den AUSGABEFORMAT-Slot injiziert und gilt damit für
+        Solver UND Reviewer (z.B. Bauteil-Fokus bei Typ-Diskrepanz).
         Signatur identisch zum AnswerGenerator-Protokoll – in _answer_one ist keine Änderung nötig.
         """
         try:
             chunks_block, sources = build_chunks_block_and_sources(chunks)
             cad_block = cad_to_prompt_context(cad_metadata)
-            format_instruction = resolve_format_instruction(answer_format)
+            # question mitgeben: Empfehlungsfragen bekommen die RECOMMENDATION_DIRECTIVE
+            # in den AUSGABEFORMAT-Slot (klare Festlegung statt Möglichkeiten-Aufzählung).
+            format_instruction = resolve_format_instruction(answer_format, question)
+            if context_directive:
+                format_instruction = f"{format_instruction}\n{context_directive}"
 
             trace: list[AgentStep] = [self._orchestrator_step(sources)]
 
@@ -170,10 +178,12 @@ class MultiAgentAnswerGenerator:
                     progress_callback("validation_skipped")
                     progress_callback("improvement_skipped")
 
-            # 3) Orchestrator-Assembly: finale, prüfbare Answer
+            # 3) Orchestrator-Assembly: finale, prüfbare Answer.
+            # strip_self_source_list: deterministischer Backstop gegen selbst angehängte
+            # "Quellen:"-Listen (redundant – die Oberfläche zeigt die Quellen strukturiert).
             answer: Answer = {
                 "question": question,
-                "answer_text": final_answer,
+                "answer_text": strip_self_source_list(final_answer),
                 "sources": sources,
                 "agent_trace": trace,
             }
@@ -189,6 +199,7 @@ class MultiAgentAnswerGenerator:
                 cad_metadata=cad_metadata,
                 answer_format=answer_format,
                 progress_callback=progress_callback,
+                context_directive=context_directive,
             )
 
     # ----------------------------------------------------------------- helpers
@@ -343,6 +354,7 @@ class MultiAgentAnswerGenerator:
         cad_metadata: dict,
         answer_format: Optional[str],
         progress_callback: Optional[ProgressCallback],
+        context_directive: Optional[str] = None,
     ) -> Answer:
         """Single-Pass-Antwort des bewährten Generators, mit einem Fallback-Hinweis im agent_trace."""
         answer = dict(self.fallback_generator.generate(
@@ -351,6 +363,7 @@ class MultiAgentAnswerGenerator:
             cad_metadata=cad_metadata,
             answer_format=answer_format,
             progress_callback=progress_callback,
+            context_directive=context_directive,
         ))
         answer["agent_trace"] = [{
             "agent": "orchestrator",

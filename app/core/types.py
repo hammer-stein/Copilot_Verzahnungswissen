@@ -125,3 +125,5 @@ class Answer(TypedDict):
     sources: list[AnswerSource]
     agent_trace: NotRequired[list[AgentStep]]
     review: NotRequired[ReviewSummary]
+    # Zitier-Transparenz: abgerufene vs. tatsächlich zitierte Quellen (app/api/main.py)
+    citation_stats: NotRequired[dict]

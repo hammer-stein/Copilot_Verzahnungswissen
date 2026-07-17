@@ -116,8 +116,12 @@ def test_aggregate_query_detection():
 
 
 class _FakeEmbedder:
+    def __init__(self):
+        self.last_texts = None  # zuletzt eingebettete Query (für Anreicherungs-Tests)
+
     def embed(self, texts):
         from app.core.types import EmbeddingResult
+        self.last_texts = list(texts)
         return EmbeddingResult(dense_vectors=[[1.0, 0.0]], sparse_vectors=None)
 
 
@@ -302,6 +306,34 @@ def test_progress_callback_with_legacy_single_arg_signature_does_not_crash():
     assert "search_done" in events  # TypeError-Fallback: Event kommt ohne Detail an
 
 
+# --- CAD-bewusstes Retrieval: context_terms reichern NUR die Suche an ---------
+
+def test_context_terms_enrich_embedding_query():
+    embedder = _FakeEmbedder()
+    retriever = _retriever(_FakeStore())
+    retriever.embedder = embedder
+    retriever.retrieve("Welches Verfahren eignet sich zur Herstellung?", context_terms="Kegelrad Kegelradverzahnung")
+    assert embedder.last_texts[0].startswith("Welches Verfahren eignet sich zur Herstellung?")
+    assert "Kegelradverzahnung" in embedder.last_texts[0]
+
+
+def test_context_terms_skipped_for_aggregate_questions():
+    # Listen-/Aggregatfragen steuern das Tabellen-Routing – sie bleiben unangereichert.
+    embedder = _FakeEmbedder()
+    retriever = _retriever(_FakeStore())
+    retriever.embedder = embedder
+    retriever.retrieve("Zeige mir alle Wellen.", context_terms="Kegelrad Kegelradverzahnung")
+    assert embedder.last_texts == ["Zeige mir alle Wellen."]
+
+
+def test_cad_retrieval_terms_mapping():
+    from app.core.cad_terms import cad_retrieval_terms
+    assert "Kegelrad" in cad_retrieval_terms({"gear_type": "bevel"})
+    assert "Gehrungsrad" in cad_retrieval_terms({"gear_type": {"value": "miter", "confidence": 0.9}})
+    assert cad_retrieval_terms({}) == ""                          # kein Bauteil geladen
+    assert cad_retrieval_terms({"gear_type": "unbekannt"}) == ""  # unbekannter Typ → keine Anreicherung
+
+
 # ---------------------------------------------------------------------------
 # Kanal B: csv_gear_mapper
 # ---------------------------------------------------------------------------
@@ -334,3 +366,174 @@ def test_csv_gear_mapper_picks_first_gear_row_and_warns(tmp_path):
 def test_csv_gear_mapper_rejects_csv_without_gear_columns(tmp_path):
     with pytest.raises(ValueError, match="Verzahnungs-Spalten"):
         map_tabular_to_gear_parameters(_write(tmp_path, "adressen.csv", "Name,Ort\nMax,Ulm\n"))
+
+
+# --- Typ-Abgleich Frage ↔ CAD + Literaturverzeichnis-Filter -------------------
+
+def test_question_gear_families_detection():
+    from app.core.cad_terms import question_gear_families
+    assert question_gear_families("ich möchte das hochgeladene kegelrad herstellen") == {"kegel"}
+    assert question_gear_families("Wie fertigt man ein Sperrrad?") == {"sperr"}
+    assert question_gear_families("Vergleich Stirnrad und Kegelrad") == {"stirn", "kegel"}
+    assert question_gear_families("Welches Verfahren eignet sich am besten?") == set()
+
+
+def test_type_mismatch_note_for_ratchet_vs_kegelrad_question():
+    from app.core.cad_terms import build_type_mismatch_note
+    cad = {"gear_type": {"value": "ratchet", "confidence": 0.92}}
+    note = build_type_mismatch_note("ich möchte das hochgeladene kegelrad herstellen", cad)
+    assert note is not None
+    assert "Sperrrad" in note and "92 %" in note and "[CAD]" in note
+
+
+def test_type_mismatch_note_absent_when_types_agree_or_unknown():
+    from app.core.cad_terms import build_type_mismatch_note
+    q = "ich möchte das hochgeladene kegelrad herstellen"
+    # Gehrungsrad IST ein Kegelrad (gleiche Familie) → keine Warnung:
+    assert build_type_mismatch_note(q, {"gear_type": {"value": "miter"}}) is None
+    assert build_type_mismatch_note(q, {"gear_type": "bevel"}) is None
+    assert build_type_mismatch_note(q, {}) is None                       # kein Bauteil
+    assert build_type_mismatch_note("Wie groß ist der Modul?", {"gear_type": "ratchet"}) is None  # kein Typ genannt
+
+
+def test_retriever_drops_bibliography_chunks():
+    from app.implementations.retriever_hybrid import _is_bibliography_chunk
+    bib = ("Literatur 483 [PETE04] PETER, A.: Entwicklung eines Modells. Dissertation, 2004 "
+           "[PISC95] PISCHEL, H.: Bewährtes Innenhochdruck-Umformen. In: Werkstatt 128 (1995) "
+           "[RADT65] RADTKE, H.: Der Umformvorgang beim Stülpziehen.")
+    assert _is_bibliography_chunk(bib)
+    # Normaler Fachtext mit Normverweisen bleibt drin:
+    assert not _is_bibliography_chunk("Nach DIN 3990 und ISO 6336 wird die Tragfähigkeit berechnet. [Q1]")
+
+    store = _FakeStore(hits=[
+        _FakeStore._hit("pdfdoc", "text", 0.82),
+        _FakeStore._hit("bibdoc", "text", 0.80),
+    ])
+    store.hits[1] = SearchResult(
+        chunk=Chunk(text=bib, source_path="x", page_number=504, position=1, doc_hash="bibdoc"),
+        metadata={"doc_kind": "text", "file_name": "klocke.pdf"},
+        dense_score=0.80, sparse_score=None, score=0.80,
+    )
+    result = _retriever(store, top_k=5).retrieve("Welche Fertigungsverfahren gibt es?")
+    assert [c.metadata["file_name"] for c in result] == ["pdfdoc.pdf"]
+
+
+def test_question_retrieval_terms_prefer_named_type():
+    from app.core.cad_terms import question_retrieval_terms
+    terms = question_retrieval_terms("ich möchte das hochgeladene kegelrad herstellen")
+    assert "Kegelradverzahnung" in terms and "Sperr" not in terms
+    assert question_retrieval_terms("Welches Verfahren eignet sich?") == ""
+
+
+# --- Konfidenz-gestufter Typ-Abgleich (part_match) ----------------------------
+
+def test_assess_type_mismatch_confidence_tiers():
+    from app.core.cad_terms import assess_type_mismatch
+    q = "ich möchte das hochgeladene kegelrad herstellen"
+
+    def cad(conf):
+        return {"gear_type": {"value": "ratchet", "confidence": conf}}
+
+    assert assess_type_mismatch(q, cad(0.3)) is None                    # < low: keine Warnung
+    assert assess_type_mismatch(q, cad(0.7)).severity == "soft"         # low..high: Status quo
+    assert assess_type_mismatch(q, cad(0.92)).severity == "hard"        # >= high: mode greift
+    # fehlende Konfidenz → konservativ soft (Verhaltensänderung braucht Messung):
+    assert assess_type_mismatch(q, {"gear_type": "ratchet"}).severity == "soft"
+    # eigene Schwellen:
+    assert assess_type_mismatch(q, cad(0.7), high_confidence=0.6).severity == "hard"
+
+
+def test_mismatch_texts_and_directive():
+    from app.core.cad_terms import (
+        assess_type_mismatch, mismatch_ask_back_answer,
+        mismatch_followed_cad_note, type_focus_directive,
+    )
+    m = assess_type_mismatch(
+        "kegelrad herstellen", {"gear_type": {"value": "ratchet", "confidence": 0.92}}
+    )
+    assert "Rückfrage" in mismatch_ask_back_answer(m) and "Sperrrad" in mismatch_ask_back_answer(m)
+    assert "TATSÄCHLICH geladene" in mismatch_followed_cad_note(m)
+    d = type_focus_directive(m)
+    assert "Sperrrad" in d and "NICHT" in d
+
+
+# --- Norm-Verifikation (Post-Generation-Guardrail) ----------------------------
+
+def test_norm_check_flags_unsupported_designations():
+    from app.core.norm_check import find_unsupported_norm_references
+    refs = [
+        "DIN 3991-4_2025-10-00_DE_3640827.pdf",
+        "Nach VDI 3720 Blatt 9.1 werden Kegelradsätze hartfein bearbeitet.",
+    ]
+    text = ("Laut DIN 3991-4:2025-10 [Q4] und VDI 3720 Blatt 9.1 [Q1] gilt das. "
+            "Zusätzlich fordert DIN 9999 eine Prüfung nach ISO 6336-6.")
+    unsupported = find_unsupported_norm_references(text, refs)
+    assert "DIN 9999" in unsupported
+    assert any("ISO 6336-6" in u for u in unsupported)
+    # belegte Normen (inkl. echtem Ausgabedatum aus dem Dateititel) werden NICHT gemeldet:
+    assert not any("3991-4" in u for u in unsupported)
+    assert not any("3720" in u for u in unsupported)
+
+
+def test_norm_check_flags_fabricated_edition_date():
+    from app.core.norm_check import find_unsupported_norm_references
+    refs = ["DIN 3965_2023-04-00_DE_3412567.pdf"]
+    # Norm existiert, aber das Jahr wurde verfälscht:
+    unsupported = find_unsupported_norm_references("Siehe DIN 3965:1986-08.", refs)
+    assert unsupported == ["Ausgabedatum 1986-08 zu DIN 3965"]
+    # korrektes Datum → kein Befund:
+    assert find_unsupported_norm_references("Siehe DIN 3965:2023-04.", refs) == []
+
+
+def test_norm_check_clean_answer_returns_empty():
+    from app.core.norm_check import find_unsupported_norm_references
+    assert find_unsupported_norm_references("Empfehlung: Schleifen [Q1].", ["Text ohne Norm"]) == []
+
+
+# --- Kennzahlen-Verifikation (Zahl + Einheit, Post-Generation-Guardrail) ------
+
+def test_measurement_check_flags_fabricated_values():
+    from app.core.norm_check import find_unsupported_measurements
+    refs = ["Die Zahnbreite beträgt 6,35 mm.", '{"module_mm": {"value": 1.0583}}']
+    # Die zwei real beobachteten Halluzinationen: Ra-Wert und Rm frei erfunden.
+    text = "Schleifen erzielt Ra-Werte < 0,8 µm. Die mittlere Teilkegellänge Rm beträgt 50 mm."
+    unsupported = find_unsupported_measurements(text, refs)
+    assert 'Kennzahl „0,8 µm“' in unsupported
+    assert 'Kennzahl „50 mm“' in unsupported
+
+
+def test_measurement_check_accepts_grounded_and_rounded_values():
+    from app.core.norm_check import find_unsupported_measurements
+    refs = ['{"pitch_diameter_mm": {"value": 25.399}, "module_mm": {"value": 1.0583}}',
+            "Der Eingriffswinkel beträgt 20°. Härte 60 HRC."]
+    # exakt, gerundet auf Anzeige-Präzision, Komma-Schreibweise, Grad, HRC:
+    text = ("Teilkreis 25,4 mm, Modul 1,06 mm bzw. 1,0583 mm, Eingriffswinkel 20°, "
+            "Härte 60 HRC.")
+    assert find_unsupported_measurements(text, refs) == []
+
+
+def test_measurement_check_ignores_bare_numbers_and_norm_digits():
+    from app.core.norm_check import find_unsupported_measurements
+    refs = ["Nur Fließtext ohne Zahlen."]
+    # Qualität 7, z = 24, [Q1], Normziffern: alles ohne Einheit bzw. Norm → kein Befund.
+    text = "Nach DIN 3965:2023-04 gilt Qualität 7 bei z = 24 [Q1]."
+    assert find_unsupported_measurements(text, refs) == []
+
+
+def test_measurement_check_question_counts_as_grounding():
+    from app.core.norm_check import find_unsupported_measurements
+    # main.py übergibt die Frage als Referenz: vom Nutzer genannte Werte sind belegt.
+    q = "Was bedeutet eine Zahnbreite von 12 mm?"
+    assert find_unsupported_measurements("Eine Zahnbreite von 12 mm bedeutet …", [q]) == []
+    assert find_unsupported_measurements("Eine Zahnbreite von 12 mm …", ["andere Zahl 13"]) \
+        == ['Kennzahl „12 mm“']
+
+
+def test_unknown_gear_type_never_triggers_follow_cad():
+    """Regression: Der ehrliche unknown-Pfad des cad_processor darf im RAG-Stack
+    weder Typ-Abgleich/follow_cad noch Retrieval-Anreicherung auslösen."""
+    from app.core.cad_terms import GEAR_TYPE_LABELS, assess_type_mismatch, cad_retrieval_terms
+    cad = {"gear_type": {"value": "unknown", "confidence": 0.45}}
+    assert assess_type_mismatch("ich möchte das kegelrad herstellen", cad) is None
+    assert cad_retrieval_terms(cad) == ""
+    assert "Unbekannt" in GEAR_TYPE_LABELS["unknown"]  # ehrliches GUI-/Prompt-Label

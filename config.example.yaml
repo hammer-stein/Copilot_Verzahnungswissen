@@ -26,6 +26,7 @@ embedder:
   device: "cpu"          # ÄNDERUNG: "cpu" | "cuda" | "mps"
   use_sparse: true       # ÄNDERUNG: false nur ohne Hybrid-Retrieval; nach Umstellung Dokumente neu indexieren
   max_length: 8192
+  batch_size: 16         # Chunks pro Embedding-Batch; größer = schnellere (Massen-)Uploads, mehr RAM
 
 # =============================================================================
 # CHUNKER – Textsegmentierung
@@ -97,8 +98,8 @@ vector_store:
 
 retriever:
   top_k: 5
-  min_similarity: 0.5   # ÄNDERUNG: 0.40–0.75 je nach Domäne und Treffer-Qualität
-  table_min_similarity: 0.35
+  min_similarity: 0.4   # Dense-Kosinus-Schwelle Fließtext (BGE-M3 relevante Treffer ~0.42–0.62).
+  table_min_similarity: 0.3   # Tabellenzeilen scoren systembedingt niedriger.
   use_hybrid: true
   hybrid_dense_weight: 0.7
   hybrid_sparse_weight: 0.3
@@ -123,7 +124,9 @@ retriever:
 
 answer_generator:
   implementation: "multi_agent"   # ÄNDERUNG: "llama_ollama" für klassischen Single-Pass
-  model_name: "llama3.2:3b"     # Optional für mehr Qualität: llama3.1:8b
+  model_name: "qwen3:8b"        # stark bei Deutsch + Instruktionstreue; Alternativen: "llama3.1:8b", "llama3.2:3b" (schwache Rechner)
+  think: false                  # Reasoning-Modus (qwen3 & Co.) AUS – Denkspuren vervielfachen die Latenz.
+                                # Bei Modellen ohne Reasoning (llama3.1/3.2) wird der Parameter automatisch ignoriert.
   ollama_url: "http://localhost:11434"
   timeout_s: 180
   max_tokens: 1200
@@ -139,3 +142,17 @@ frontend:
   default_question_fields: 3
   max_question_fields: 6
   show_metadata_panel: true
+
+# =============================================================================
+# TYP-ABGLEICH – Frage nennt anderen Zahnradtyp als das geladene CAD-Bauteil
+# =============================================================================
+# mode (greift erst ab high_confidence):
+#   "follow_cad" = Antwort für den TATSÄCHLICH geladenen CAD-Typ, mit Abweichungshinweis
+#   "ask_back"   = Rückfrage statt Sachantwort (Frage muss präzisiert neu gestellt werden)
+# Unter low_confidence: keine Warnung. Dazwischen: Warnung + Antwort wie gefragt.
+# =============================================================================
+
+part_match:
+  mode: "follow_cad"     # ÄNDERUNG: "ask_back" für Rückfrage statt CAD-Typ-Antwort
+  high_confidence: 0.85
+  low_confidence: 0.5

@@ -186,6 +186,7 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
         domain_name=config.domain.name,
         max_tokens=ag.max_tokens,
         temperature=ag.temperature,
+        think=ag.think,  # Reasoning-Modus (qwen3 & Co.); für RAG-Betrieb: false
     )
 
     if ag.implementation == "llama_ollama":
@@ -197,7 +198,7 @@ def build_components(config: AppConfig, *, base_dir: Path) -> Components:
         from app.pipeline.agents.reviewer import ReviewerAgent
         from app.pipeline.agents.solver import SolverAgent
 
-        client = OllamaClient(base_url=ag.ollama_url, timeout_s=ag.timeout_s)
+        client = OllamaClient(base_url=ag.ollama_url, timeout_s=ag.timeout_s, think=ag.think)
         solver = SolverAgent(
             client=client,
             model_name=ag.model_name,

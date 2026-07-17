@@ -66,3 +66,9 @@ class FolderRegistry:
             folders = [f for f in self._read() if f != name]
             self._write(folders)
             return sorted(folders, key=str.casefold)
+
+    def clear(self) -> list[str]:
+        """Entfernt alle Ordner aus der Registry (für "Alle löschen"). Gibt die nun leere Liste zurück."""
+        with self._lock:
+            self._write([])
+            return []

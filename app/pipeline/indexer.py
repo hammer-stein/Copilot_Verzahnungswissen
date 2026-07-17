@@ -97,6 +97,10 @@ class KnowledgeBaseIndexer:
     def delete_document(self, doc_hash: str) -> None:
         self.store.delete_by_doc_hash(doc_hash)
 
+    def clear_all(self) -> None:
+        """Löscht die gesamte Wissensbasis (alle Dokumente/Chunks)."""
+        self.store.clear_all()
+
     def list_documents(self) -> list[DocumentInfo]:
         return self.store.list_documents()
     
