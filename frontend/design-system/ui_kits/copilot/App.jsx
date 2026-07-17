@@ -11,10 +11,15 @@ const EMPTY_GEAR = {
   fusskreis: '—', zahnbreite: '—', werkstoff: '—', haerte: '—', qualitaet: '—',
 };
 
-/* German labels for the GearParameters gear_type enum. */
+/* German labels for the GearParameters gear_type enum — MUST cover every type the
+   cad_processor can emit (see app/core/cad_terms.py GEAR_TYPE_LABELS), otherwise the
+   chips (TopBar/Inspector) fall back to the raw English key and look like a bug.
+   "unknown" is the honest no-guess path of the analyzer, not an error. */
 const GEAR_TYPE_LABELS = {
   spur: 'Stirnrad', helical: 'Schrägverzahnung', bevel: 'Kegelrad',
   internal: 'Innenverzahnung', worm: 'Schnecke', rack: 'Zahnstange',
+  miter: 'Gehrungsrad', ratchet: 'Sperrrad (Ratsche)', crown: 'Kronrad (Planrad)',
+  worm_wheel: 'Schneckenrad', unknown: 'Unbekannt',
 };
 
 /* Map raw backend cad_metadata (GearParameters nested format from cad_processor /
@@ -360,11 +365,22 @@ function App() {
   const kbUpload = async (files, folder, opts = {}) => {
     const list = Array.from(files || []).filter((file) => KNOWLEDGE_RE.test(file.name));
     if (list.length === 0) return { uploaded: 0, failed: 0 };
+    const total = list.length;
     let uploaded = 0;
     let failed = 0;
+    /* Fortschritt an die Bibliothek melden: done = fertige Dateien (Erfolg + Fehler),
+       currentName = gerade laufende Datei. Dateien werden sequenziell verarbeitet,
+       damit das Embedding-Modell nicht überlastet wird – deshalb ist ein Balken sinnvoll. */
+    const report = (currentName) => {
+      if (typeof opts.onProgress === 'function') {
+        opts.onProgress({ done: uploaded + failed, total, uploaded, failed, currentName: currentName || '' });
+      }
+    };
     setKbBusy(true);
+    report('');
     try {
       for (const file of list) {
+        report(file.name);  // Datei, die gerade hochgeladen/indexiert wird
         const uploadFolder = opts.preserveFolders
           ? joinFolder(folder, relativeFolder(file))
           : (folder || '');
@@ -375,6 +391,7 @@ function App() {
           failed += 1;
           console.error('Dokument-Upload fehlgeschlagen', file.name, e);
         }
+        report('');  // Zähler nach jeder Datei aktualisieren
       }
     } finally {
       await refreshKb();
@@ -419,6 +436,32 @@ function App() {
   const kbDeleteDocument = async (docHash) => {
     await fetch(`${API}/documents/${docHash}`, { method: 'DELETE' });
     await refreshKb();
+  };
+  /* "Alle löschen": leert die komplette Wissensbasis (alle Dokumente + Ordner). */
+  const kbDeleteAll = async () => {
+    const r = await fetch(`${API}/documents`, { method: 'DELETE' });
+    if (!r.ok) {
+      const j = await r.json().catch(() => null);
+      throw new Error((j && j.detail) || `HTTP ${r.status}`);
+    }
+    const j = await r.json().catch(() => null);
+    await refreshKb();
+    return j || {};
+  };
+  /* Mehrfachauswahl löschen: gezielte Dokumente + ganze Ordner (inkl. Inhalt). */
+  const kbBulkDelete = async (docHashes, folderNames) => {
+    const r = await fetch(`${API}/documents/delete-bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_hashes: docHashes || [], folders: folderNames || [] }),
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => null);
+      throw new Error((j && j.detail) || `HTTP ${r.status}`);
+    }
+    const j = await r.json().catch(() => null);
+    await refreshKb();
+    return j || {};
   };
 
   const messages = activeChat ? (transcripts[activeChat] || []) : [];
@@ -675,6 +718,8 @@ function App() {
             onMoveDocument={kbMoveDocument}
             onRenameDocument={kbRenameDocument}
             onDeleteDocument={kbDeleteDocument}
+            onDeleteAll={kbDeleteAll}
+            onBulkDelete={kbBulkDelete}
           />
         ) : (
           <>
