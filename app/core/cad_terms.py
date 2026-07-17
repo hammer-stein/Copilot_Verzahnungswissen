@@ -246,3 +246,100 @@ def build_type_mismatch_note(question: str, cad: dict[str, Any]) -> Optional[str
     """
     mismatch = assess_type_mismatch(question, cad)
     return mismatch_warn_note(mismatch) if mismatch else None
+
+
+# ---------------------------------------------------------------------------
+# Toleranz-Plausibilität Frage ↔ CAD-Bauteil (deterministischer Guardrail)
+# ---------------------------------------------------------------------------
+# Real beobachtet: Frage nennt "Toleranz 5 mm", das geladene Bauteil ist ein
+# Mikro-Zahnrad (Modul 0,26 mm). Eine solche Toleranz übersteigt die gesamte
+# Zahnprofilgröße – das LLM erkennt das nicht und leitet daraus grobe Verfahren
+# ab. Bezugsgröße ist der MODUL (nicht der Teilkreis): Er skaliert das Zahnprofil
+# (Zahnhöhe ≈ 2,25·m nach DIN 867, Zahndicke ≈ 1,57·m). Einordnung der Schwellen:
+# Verzahnungsabweichungen liegen selbst in den gröbsten genormten Qualitäten
+# (DIN 3961/3962, ISO 1328) deutlich unter ~0,2·m; ab ~0,3·m ist keine
+# Verzahnungsqualität mehr darstellbar, ab 1,0·m ist das Profil zerstört.
+# Der Guardrail MARKIERT nur (Fußnote + Trace) – die Antwort wird nie unterdrückt.
+
+# Toleranzangaben NUR mit explizitem Signal (Toleranz/Genauigkeit/±/"auf X genau"),
+# damit nackte Maßangaben ("Zahnbreite 5 mm") keine Fehlalarme erzeugen.
+_TOLERANCE_RE = re.compile(
+    r"(?:toleranz(?:\s+von)?|toleriert(?:\s+auf)?|genauigkeit(?:\s+von)?|±|\+/-)\s*"
+    r"(\d+(?:[.,]\d+)?)\s*(mm|µm|μm|mikrometern?)"
+    r"|auf\s+(\d+(?:[.,]\d+)?)\s*(mm|µm|μm|mikrometern?)\s+genau",
+    re.IGNORECASE,
+)
+
+TOLERANCE_UNREALISTIC_FACTOR = 1.0   # t ≥ 1,0·m → Profil zerstört
+TOLERANCE_BORDERLINE_FACTOR = 0.3    # t ≥ 0,3·m → außerhalb genormter Qualitäten
+
+
+class ToleranceFinding(NamedTuple):
+    """Befund der Toleranz-Plausibilitätsprüfung (nur bei auffälliger Angabe)."""
+    severity: str        # "unrealistic" | "borderline"
+    quoted: str          # Angabe wie in der Frage genannt, z.B. "5 mm"
+    tolerance_mm: float
+    module_mm: float
+
+
+def _extract_tolerances_mm(question: str) -> list[tuple[float, str]]:
+    """Alle explizit als Toleranz/Genauigkeit erkennbaren Angaben, in mm normalisiert."""
+    found: list[tuple[float, str]] = []
+    for m in _TOLERANCE_RE.finditer(question or ""):
+        number, unit = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        value = float(number.replace(",", "."))
+        if unit.lower() not in ("mm",):
+            value /= 1000.0  # µm → mm
+        found.append((value, f"{number} {unit}"))
+    return found
+
+
+def assess_tolerance_plausibility(question: str, cad: dict[str, Any]) -> Optional[ToleranceFinding]:
+    """
+    Prüft in der Frage genannte Toleranzangaben gegen den Modul des geladenen
+    Bauteils. None = kein Befund (keine Toleranz genannt, kein Bauteil/Modul,
+    oder Angabe plausibel) – der Normalfall, bewusst fehlalarmfrei.
+    Bei mehreren Angaben wird die größte (kritischste) bewertet.
+    """
+    tolerances = _extract_tolerances_mm(question)
+    if not tolerances:
+        return None
+    tp = (cad or {}).get("tooth_profile") or {}
+    module = tp.get("module_mm")
+    if isinstance(module, dict):
+        module = module.get("value")
+    try:
+        module_mm = float(module)
+    except (TypeError, ValueError):
+        return None
+    if module_mm <= 0:
+        return None
+
+    tolerance_mm, quoted = max(tolerances, key=lambda t: t[0])
+    ratio = tolerance_mm / module_mm
+    if ratio >= TOLERANCE_UNREALISTIC_FACTOR:
+        severity = "unrealistic"
+    elif ratio >= TOLERANCE_BORDERLINE_FACTOR:
+        severity = "borderline"
+    else:
+        return None
+    return ToleranceFinding(severity=severity, quoted=quoted,
+                            tolerance_mm=tolerance_mm, module_mm=module_mm)
+
+
+def tolerance_note(finding: ToleranceFinding) -> str:
+    """Fußnote im Stil der übrigen Guardrails – markiert, überschreibt nicht."""
+    module = finding.module_mm
+    if finding.severity == "unrealistic":
+        return (
+            f"⚠️ **Toleranz-Plausibilität:** Die genannte Toleranz ({finding.quoted}) übersteigt "
+            f"die Zahnprofilgröße des geladenen Bauteils (Modul {module:g} mm, Zahnhöhe "
+            f"≈ {2.25 * module:.2f} mm) – an dieser Verzahnung ist eine solche Toleranz "
+            f"fertigungstechnisch nicht sinnvoll. Bitte Toleranzangabe prüfen; die Antwort "
+            f"oben bewertet die Frage, wie sie gestellt wurde."
+        )
+    return (
+        f"⚠️ **Toleranz-Plausibilität:** Die genannte Toleranz ({finding.quoted}) ist sehr grob "
+        f"für dieses Bauteil (Modul {module:g} mm) – sie liegt außerhalb genormter "
+        f"Verzahnungsqualitäten (DIN 3961/ISO 1328). Bitte Toleranzangabe prüfen."
+    )

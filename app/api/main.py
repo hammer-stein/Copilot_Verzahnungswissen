@@ -33,12 +33,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.core.cad_terms import (
+    assess_tolerance_plausibility,
     assess_type_mismatch,
     cad_retrieval_terms,
     mismatch_ask_back_answer,
     mismatch_followed_cad_note,
     mismatch_warn_note,
     question_retrieval_terms,
+    tolerance_note,
     type_focus_directive,
 )
 from app.core.config import load_config
@@ -822,7 +824,23 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
                 "status": "warnung",
             })
 
-        # --- Guardrail 2: Zitier-Transparenz (abgerufen vs. tatsächlich zitiert) ---
+        # --- Guardrail 2: Toleranz-Plausibilität (deterministisch, kein LLM) ---
+        # In der Frage genannte Toleranzangaben werden gegen den Modul des geladenen
+        # Bauteils geprüft (Zahnprofilgröße); auffällige Angaben werden markiert –
+        # die LLM-Antwort bleibt unangetastet (kein Umlenken, nur Fußnote + Trace).
+        tolerance = assess_tolerance_plausibility(question, cad_json)
+        if tolerance:
+            note = tolerance_note(tolerance)
+            answer_text = f"{answer_text}\n\n{note}"
+            answer["answer_text"] = answer_text
+            merged.append({
+                "agent": "orchestrator",
+                "title": "Toleranz-Plausibilität",
+                "content": note.replace("⚠️ **Toleranz-Plausibilität:** ", "").replace("**", ""),
+                "status": "warnung",
+            })
+
+        # --- Guardrail 3: Zitier-Transparenz (abgerufen vs. tatsächlich zitiert) ---
         cited_qids = [f"Q{n}" for n in sorted({int(x) for x in re.findall(r"\[Q(\d+)\]", answer_text)})]
         title_by_qid = {str(s.get("qid")): str(s.get("title", "")) for s in sources}
         stats = {

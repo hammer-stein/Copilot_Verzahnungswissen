@@ -537,3 +537,53 @@ def test_unknown_gear_type_never_triggers_follow_cad():
     assert assess_type_mismatch("ich möchte das kegelrad herstellen", cad) is None
     assert cad_retrieval_terms(cad) == ""
     assert "Unbekannt" in GEAR_TYPE_LABELS["unknown"]  # ehrliches GUI-/Prompt-Label
+
+
+# --- Toleranz-Plausibilität (deterministischer Guardrail) ---------------------
+
+def _tol(question, module_mm=0.2646):
+    from app.core.cad_terms import assess_tolerance_plausibility
+    cad = {"tooth_profile": {"module_mm": {"value": module_mm, "unit": "mm"}}} if module_mm else {}
+    return assess_tolerance_plausibility(question, cad)
+
+
+def test_tolerance_unrealistic_on_micro_gear():
+    # Realfall: 5 mm Toleranz am Mikro-Kronrad (m=0,2646) → 19·m → unrealistisch.
+    f = _tol("Wie fertige ich das mit Toleranz 5 mm?")
+    assert f is not None and f.severity == "unrealistic"
+    assert f.quoted == "5 mm" and f.module_mm == 0.2646
+
+
+def test_tolerance_plausible_on_normal_gear_stays_silent():
+    # ±0,1 mm an m=2-Kegelrad = 0,05·m → plausibel, kein Befund.
+    assert _tol("Geht das mit ±0,1 mm?", module_mm=2.0) is None
+
+
+def test_no_tolerance_mentioned_no_finding():
+    # Fehlalarm-Schutz: nackte Maßangaben sind KEINE Toleranzen.
+    assert _tol("Wie stelle ich eine Zahnbreite von 5 mm her?") is None
+    assert _tol("Der Teilkreis beträgt 5,03 mm.") is None
+    assert _tol("Welches Verfahren eignet sich am besten?") is None
+
+
+def test_tolerance_notation_variants_and_units():
+    # Schreibweisen: "Toleranz von", ±, "auf X genau", µm-Umrechnung, Grenzstufe.
+    assert _tol("Toleranz von 5mm möglich?").severity == "unrealistic"
+    assert _tol("geht +/-0,5 mm?").severity == "unrealistic"
+    assert _tol("auf 0,1 mm genau fertigen").severity == "borderline"     # 0,38·m
+    assert _tol("Genauigkeit von 300 µm nötig").severity == "unrealistic" # 1,13·m
+    assert _tol("Genauigkeit von 10 µm nötig") is None                    # 0,04·m
+
+
+def test_tolerance_without_part_or_module_no_finding():
+    from app.core.cad_terms import assess_tolerance_plausibility
+    assert assess_tolerance_plausibility("Toleranz 5 mm?", {}) is None
+    assert assess_tolerance_plausibility("Toleranz 5 mm?", {"gear_type": "spur"}) is None
+
+
+def test_tolerance_note_wording():
+    from app.core.cad_terms import tolerance_note
+    f = _tol("Toleranz 5 mm")
+    note = tolerance_note(f)
+    assert "5 mm" in note and "0.2646" in note.replace(",", ".") or "0,2646" in note
+    assert "Zahnprofil" in note and "prüfen" in note
