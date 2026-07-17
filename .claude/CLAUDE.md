@@ -24,7 +24,7 @@ Das Projekt ist in drei Hauptkomponenten aufgeteilt, die via Docker Compose orch
    - Stack: React. Der Design-System-Showcase in `design-system-source/` wird zur Laufzeit **nicht** geladen.
 
 ## Infrastruktur & externe Services
-- **LLM:** Ollama (Modell: `llama3.2:3b`). Läuft **außerhalb** von Docker auf dem Host.
+- **LLM:** Ollama (Modell: `qwen3:8b`, Reasoning via `think: false` deaktiviert). Läuft **außerhalb** von Docker auf dem Host.
 - **Vektordatenbank:** Qdrant (Port 6333 im Container-Netzwerk).
 - **Netzwerk-Routing:** Innerhalb von Docker kommunizieren Services über ihre Containernamen (`qdrant`, `cad_processor`). Der Zugriff auf Ollama erfolgt zwingend über `http://host.docker.internal:11434`.
 
@@ -39,7 +39,7 @@ Eine neue Komponente fügst du hinzu, indem du das passende Protocol implementie
 
 ## Datenfluss & CAD-Bridge
 - **CAD-JSON ist English-keyed und wird unverändert durchgereicht:** Der `CadProcessorClient` (`app/implementations/cad_processor_client.py`) gibt das GearParameters-JSON des `cad_processor` (Struktur in `cad_processor/src/output_schema.py`) **unverändert** zurück. Es gibt **kein** Mapping auf deutsche Keys mehr und **keine** `schemas/gears.yaml`. `cad_metadata` im `/ask`-Request nutzt durchgängig die englischen Keys (z.B. `gear_type`, `tooth_profile.module_mm`).
-- **CAD-JSON fließt erst in der Antwortstufe ein**, nicht ins Retrieval: Es wird weder embedded noch als Filter genutzt. Der `HybridRetriever` sucht nur mit der Original-Frage; der `AnswerGenerator` bekommt dann Frage + Chunks + vollständiges CAD-JSON + Ausgabeformat.
+- **CAD-bewusstes Retrieval (leichtgewichtig):** Das CAD-JSON wird nicht als Filter genutzt, aber bei geladenem Bauteil reichert `_answer_one` die Retrieval-Query um deutsche Zahnradtyp-Suchbegriffe an (`app/core/cad_terms.py` → `HybridRetriever.retrieve(context_terms=…)`), damit bauteilspezifische Literatur vor generischen Treffern rankt. Listen-/Aggregatfragen bleiben unangereichert (Tabellen-Routing). Die Antwortstufe bekommt weiterhin die **Original-Frage** + Chunks + vollständiges CAD-JSON + Ausgabeformat.
 - **`cad_adapter: synthetic_json`** liefert Testdaten aus `test_verzahnung/cad_testdaten/`; die Endpunkte `/cad/random` und `/cad/examples` nutzen **immer** diese synthetischen Daten (unabhängig vom konfigurierten Hauptadapter).
 - **Env-Variablen überschreiben `config.yaml`** (siehe `docker-compose.yml`): `QDRANT_HOST`, `QDRANT_PORT`, `CAD_PROCESSOR_URL`, `OLLAMA_URL`. So wird die lokal eingebettete Config im Compose-Betrieb auf echte Services umgestellt.
 
@@ -53,17 +53,31 @@ Eine neue Komponente fügst du hinzu, indem du das passende Protocol implementie
 ## Wichtige Befehle (Entwicklung)
 **Docker-Setup (Standard):**
 - Starten: `docker compose up --build`
-- Ollama lokal: `ollama pull llama3.2:3b`
+- Ollama lokal: `ollama pull qwen3:8b`
 
 **Lokale Entwicklung (ohne Docker):**
 - CAD-Prozessor: `conda activate gear-copilot` -> `cd cad_processor` -> `uvicorn src.main:app --reload --port 8001`
 - RAG-System: `source .venv/bin/activate` -> `uvicorn app.api.main:app --reload --port 8000` (Benötigt Embedded Qdrant via `path: "storage/qdrant"` in der config.yaml).
 
 **Tests:**
-- RAG-System (im `.venv`, vom Repo-Root): `pytest` (Suite unter `tests/`: `test_smoke.py`, `test_config.py`, `test_api_integration.py`).
+- **Standardlauf (ALLE Suiten, ein Befehl): `./run_tests.sh`** — führt RAG- UND CAD-Suite
+  in ihren jeweiligen Containern aus und schlägt fehl, wenn irgendeine Suite rot ist.
+  Mit `--live` läuft zusätzlich der Live-E2E-Test gegen den laufenden Stack (sonst sichtbar "skipped").
+  Die CAD-Suite wird von `pytest tests/` NICHT mit eingesammelt (eigenes Conda-Env) —
+  niemals nur die RAG-Suite als "alles grün" werten.
+- RAG-System einzeln (im `.venv`, vom Repo-Root): `pytest` (Suite unter `tests/`).
 - Einzelner Test: `pytest tests/test_smoke.py::test_answer_prompt_has_required_placeholders -q`.
-- CAD-Prozessor (im Conda-Env `gear-copilot`, aus `cad_processor/`): `pytest tests/test_geometry.py`.
-- CAD-Genauigkeits-Test gegen Soll-Werte (kein pytest): `cd cad_processor && python tests/accuracy_test.py` (Optionen: `--step-dir data/examples`, `--warn 2.0 --error 5.0`).
+- CAD-Prozessor einzeln (im Conda-Env `gear-copilot`, aus `cad_processor/`): `pytest tests/test_geometry.py`.
+- CAD-Genauigkeits-Test gegen Soll-Werte: `./run_tests.sh --accuracy` (oder lokal im Conda-Env:
+  `cd cad_processor && python tests/accuracy_test.py`). **Datenablage:** Die 28 McMaster-Carr-
+  Ground-Truth-STEP-Dateien + `Kronenrad.stp` müssen unter `cad_processor/data/examples/` liegen
+  (rekursiv gefunden; Dateinamen exakt = Keys in `cad_processor/tests/ground_truth.json`, z.B.
+  `2664N11_Metal Gear - 20 Degree Pressure Angle.STEP`). Sie sind bewusst NICHT in Git
+  (McMaster-Nutzungsbedingungen) — sie reisen mit der Ordner-/ZIP-Kopie des Projekts; bei Verlust
+  über die Katalognummern in ground_truth.json bei mcmaster.com neu herunterladbar.
+  Gemessener Stand (2026-07-17, aktueller Code): 28/29 Typen korrekt, 291/303 Parameter (96 %);
+  einzige Fehlklassifikation: Zahnstange 2485N205 → "internal" @ 0.82 (Fallback-Heuristik, unter
+  der follow_cad-Schwelle — ehrlich unsicher, kein stiller Fehler).
 - Retrieval-Evaluation (MRR/Hit@k): Notebook `test_verzahnung/evaluation.ipynb`.
 
 ## Anweisungen für Claude Code

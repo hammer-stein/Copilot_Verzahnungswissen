@@ -5,7 +5,10 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_data:/qdrant/storage
+      # Vektor-Index liegt im Projektordner (nicht in einem versteckten Docker-Volume),
+      # damit die vorbefüllte Wissensbasis MIT dem Projekt weitergegeben werden kann:
+      # Ordner mitkopieren → `docker compose up` → Index sofort da (kein Neu-Indexieren).
+      - ./qdrant_storage:/qdrant/storage
 
   cad_processor:
     build: ./cad_processor
@@ -48,5 +51,4 @@ services:
       - ./prompts:/app/prompts             # Prompt-Dateien -> Server manuell neu starten
 
 volumes:
-  qdrant_data:
   hf_cache:

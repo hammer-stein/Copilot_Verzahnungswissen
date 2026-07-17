@@ -15,6 +15,13 @@ config.yaml
 # Logs & Storage
 logs/
 storage/
+# Ground-Truth-STEP-Dateien (McMaster-Carr-Downloads, Nutzungsbedingungen):
+# reisen per Ordner-/ZIP-Kopie mit; Katalognummern in cad_processor/tests/ground_truth.json
+cad_processor/data/examples/
+test_verzahnung/Industrieverzahnungen/
+# Vorbefüllter Qdrant-Vektor-Index (~0,5 GB). Reist NICHT über Git (zu groß),
+# sondern über eine Ordner-/ZIP-Kopie des Projekts (siehe ABGABE.md).
+qdrant_storage/
 
 # Caches & generierte Artefakte
 # (Inline-Kommentare sind in .gitignore NICHT erlaubt – daher hier auf eigenen Zeilen)
