@@ -16,6 +16,8 @@ import argparse
 import logging
 import math
 import sys
+import os      
+import uuid
 from pathlib import Path
 
 _log = logging.getLogger("step_parser")
@@ -477,11 +479,17 @@ def get_step_metadata(filepath: str) -> dict:
 # Hauptfunktion
 # ─────────────────────────────────────────────
 
-def parse_step_file(input_path: str, output_path: str) -> GearParameters:
+def parse_step_file(input_path: str, output_path: str = None) -> GearParameters:
 
     print("\n" + "=" * 55)
     print("STEP Parser — Gruppe B Geometrie-Modul")
     print("=" * 55)
+
+    if output_path is None:
+        unique_id = str(uuid.uuid4())
+        output_dir = "output"
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, f"gear_parameters_{unique_id}.json")
 
     # Shape laden
     print("\n[1/5] STEP-Datei laden...")
