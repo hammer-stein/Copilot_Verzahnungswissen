@@ -1,5 +1,7 @@
 # KI-Copilot für Verzahnungswissen
 
+Paper: https://drive.google.com/file/d/1JRbt7yYndKghsjJjNE1wVQZXcAPD1b-K/view?usp=share_link
+
 Lokales Retrieval-Augmented-Generation-System (RAG) für Verzahnungswissen. Die Anwendung verbindet eine Dokumentenwissensbasis, die Analyse von STEP/STP-Dateien und ein lokales Ollama-Sprachmodell in einer Weboberfläche.
 
 ```text
